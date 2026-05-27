@@ -14,12 +14,13 @@ export interface LIFParams {
 export class LIFNeuron {
   public v: number;                  // 當前膜電位 (mV)
   public hasSpiked: boolean = false; // 當前時間步長是否發生脈衝
+  public params: LIFParams;
   
   // protected 修飾符允許未來的子類別 (如 ConductanceLIF) 存取與覆寫
   protected tref_counter: number = 0; // 不應期倒數計時器 (ms)
 
   constructor(
-    public params: LIFParams = {
+    params: LIFParams = {
       V_th: -55,
       V_reset: -75,
       V_L: -75,
@@ -28,6 +29,7 @@ export class LIFNeuron {
       tref: 2,
     }
   ) {
+    this.params = params;
     this.v = this.params.V_L; // 初始電位設定為靜息電位
   }
 

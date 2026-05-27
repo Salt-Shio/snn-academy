@@ -4,8 +4,11 @@
  */
 export class PoissonSource {
   public hasSpiked: boolean = false;
+  public rate: number;
 
-  constructor(public rate: number = 20) {} // 預設放電率為 20 Hz
+  constructor(rate: number = 20) {
+    this.rate = rate;
+  } // 預設放電率為 20 Hz
 
   /**
    * 推進一個時間步長

@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { ref, onMounted, reactive, watch } from 'vue';
-import { LIFNeuron, LIFParams } from '../lib/snn/LIFNeuron';
+import { LIFNeuron } from '../lib/snn/LIFNeuron';
+import type { LIFParams } from '../lib/snn/LIFNeuron';
 import { PoissonSource } from '../lib/snn/PoissonSource';
+import { GWNSource } from '../lib/snn/GWNSource';
 
 // 模擬參數
 const SIM_DURATION = 400; // ms
@@ -25,6 +27,7 @@ const neuronParams = reactive<LIFParams>({
 const constantCurrent = ref(250); // pA
 const poissonRate = ref(50);      // Hz
 const poissonPulseAmplitude = ref(2000); // 脈衝強度 (pA)，用於模擬輸入
+const noiseSigma = ref(0);        // 雜訊強度 (mV)
 
 // 模擬數據歷史
 const voltageHistory = ref<number[]>([]);
@@ -44,10 +47,12 @@ const runSimulation = () => {
     let current = 0;
 
     if (inputMode.value === 'constant') {
-      // 常數模式 (100-300ms)
-      current = (time >= 100 && time <= 300) ? constantCurrent.value : 0;
+      // 常數模式 (100-300ms) + 高斯白雜訊
+      const iBase = (time >= 100 && time <= 300) ? constantCurrent.value : 0;
+      const iNoise = GWNSource.getNoiseCurrent(noiseSigma.value, neuronParams.tau_m, neuronParams.g_L, DT);
+      current = iBase + iNoise;
     } else {
-      // 泊松模式
+      // 泊松模式 (不帶 GWN 背景雜訊)
       if (pSource.step(DT)) {
         pSpikes.push(time);
         current = poissonPulseAmplitude.value; // 當泊松源發生脈衝，注入一個瞬時強電流
@@ -75,7 +80,7 @@ const getVoltagePath = (data: number[]) => {
 };
 
 // 參數改變時自動重新模擬
-watch([neuronParams, constantCurrent, poissonRate, inputMode, poissonPulseAmplitude], () => {
+watch([neuronParams, constantCurrent, poissonRate, inputMode, poissonPulseAmplitude, noiseSigma], () => {
   runSimulation();
 }, { deep: true });
 
@@ -128,7 +133,20 @@ onMounted(() => {
               </div>
               <input type="range" v-model.number="constantCurrent" min="0" max="600" step="10" class="w-full accent-yellow-500" />
             </div>
-            <p class="text-[10px] text-gray-500 italic">在 100ms 至 300ms 區間注入常數電流。</p>
+            
+            <!-- 背景雜訊 (GWN) - 僅在常數電流模式顯示 -->
+            <div class="pt-4 border-t border-gray-700 space-y-4">
+              <div class="flex flex-col">
+                <div class="flex justify-between items-end mb-2">
+                  <label class="text-xs text-gray-400 font-bold uppercase tracking-widest">Background Noise (σ)</label>
+                  <span class="text-2xl font-mono text-pink-500 leading-none">{{ noiseSigma }} <span class="text-xs text-gray-500">mV</span></span>
+                </div>
+                <input type="range" v-model.number="noiseSigma" min="0" max="10" step="0.5" class="w-full accent-pink-500" />
+              </div>
+              <p class="text-[10px] text-gray-500 italic">加入高斯白雜訊 (GWN)，模擬突觸輸入的隨機波動。</p>
+            </div>
+
+            <p class="text-[10px] text-gray-500 italic">在 100ms 至 300ms 區區間注入常數電流。</p>
           </div>
 
           <div v-else class="space-y-6">
