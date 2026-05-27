@@ -66,8 +66,16 @@ export class LIFNeuron {
 
     // 3. 微分方程式數值積分 (Euler Method)
     // dv/dt = (-(v - V_L) + I_inj/g_L) / tau_m
-    const dv = (-(this.v - this.params.V_L) + (I_inj / this.params.g_L)) / this.params.tau_m * dt;
+    const gL = Math.max(this.params.g_L, 1e-9); // 防止除以 0
+    const tauM = Math.max(this.params.tau_m, 1e-9); // 防止除以 0
+    
+    const dv = (-(this.v - this.params.V_L) + (I_inj / gL)) / tauM * dt;
     this.v += dv;
+
+    // 防止數值爆炸
+    if (!Number.isFinite(this.v)) {
+      this.v = this.params.V_reset;
+    }
 
     // 4. 更新後再次檢查是否跨越閾值
     if (this.v >= this.params.V_th) {
