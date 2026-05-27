@@ -64,7 +64,10 @@ $$I_{inj}(t) = I_{base}(t) + I_{noise}(t)$$
 ## 5. 程式碼對照 (`LIFNeuron.ts`)
 
 ```typescript
-// 核心更新邏輯
-const dv = (-(this.v - this.params.V_L) + (I_inj / this.params.g_L)) / this.params.tau_m * dt;
+// 核心更新邏輯 (包含防除以零檢查)
+const gL = Math.max(this.params.g_L, 1e-9);
+const tauM = Math.max(this.params.tau_m, 1e-9);
+
+const dv = (-(this.v - this.params.V_L) + (I_inj / gL)) / tauM * dt;
 this.v += dv;
 ```
