@@ -1,5 +1,5 @@
-# Vue 3 + TypeScript + Vite
+# SNN　學習資源
 
-This template should help get you started developing with Vue 3 and TypeScript in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+此專案是希望透過視覺話的方式把 SNN 的原理以及概念，從生物學到數學用視覺化的方式呈現
 
-Learn more about the recommended Project Setup and IDE Support in the [Vue Docs TypeScript Guide](https://vuejs.org/guide/typescript/overview.html#project-setup).
+奠定 SNN 研究社群的基礎
