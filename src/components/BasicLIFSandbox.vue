@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { ref, onMounted, reactive, watch, nextTick } from 'vue';
-// 同時導入兩種類型的 LIFNeuron
-import { LIFNeuron as CUBANeuron } from '../lib/snn/neurons/cuba/LIFNeuron';
-import { LIFNeuron as COBANeuron } from '../lib/snn/neurons/coba/LIFNeuron';
+// 導入統一的 LIFNeuron
+import { LIFNeuron } from '../lib/snn/neurons/LIFNeuron';
 import { PoissonSource } from '../lib/snn/PoissonSource';
 import { GWNSource } from '../lib/snn/GWNSource';
 import { calculateCV_ISI, generateFICurve } from '../lib/snn/metrics';
 import { StaticSynapse } from '../lib/snn/synapses/StaticSynapse';
 import { STPSynapse } from '../lib/snn/synapses/STPSynapse';
+import { CobaSynapse } from '../lib/snn/synapses/CobaSynapse';
+import type { ISynapse } from '../lib/snn/synapses/ISynapse';
 
 // KaTeX 樣式 (僅前端 UI 依賴)
 import 'katex/dist/katex.min.css';
@@ -97,20 +98,27 @@ const isCalculatingFI = ref(false);
 
 const runSimulation = () => {
   // 根據選擇的模型類型初始化
-  const neuron = modelType.value === 'cuba' 
-    ? new CUBANeuron({ ...cubaParams }) 
-    : new COBANeuron({ ...cobaParams });
+  const params = modelType.value === 'cuba' ? cubaParams : cobaParams;
+  const neuron = new LIFNeuron({ ...params } as any);
 
-  // 根據選擇的突觸類型初始化
-  const synapse = synapseType.value === 'static'
-    ? new StaticSynapse(poissonPulseStrength.value, synapseParams.tau_syn)
-    : new STPSynapse(
-        poissonPulseStrength.value, 
-        synapseParams.tau_syn, 
-        stpParams.U0, 
-        stpParams.tau_d, 
-        stpParams.tau_f
-      );
+  // 根據選擇的突觸類型初始化基礎突觸
+  let baseSynapse: ISynapse;
+  if (synapseType.value === 'static') {
+    baseSynapse = new StaticSynapse(poissonPulseStrength.value, synapseParams.tau_syn);
+  } else {
+    baseSynapse = new STPSynapse(
+      poissonPulseStrength.value, 
+      synapseParams.tau_syn, 
+      stpParams.U0, 
+      stpParams.tau_d, 
+      stpParams.tau_f
+    );
+  }
+
+  // 若為 COBA 模式，則套用裝飾器進行電導轉電流的計算
+  const synapse = modelType.value === 'coba' 
+    ? new CobaSynapse(baseSynapse, cobaParams.V_E)
+    : baseSynapse;
 
   const pSource = new PoissonSource(poissonRate.value);
   
@@ -127,9 +135,9 @@ const runSimulation = () => {
     const hasPreSpike = (inputMode.value === 'poisson') && pSource.step(DT);
     if (hasPreSpike) pSpikes.push(time);
 
-    // 2. 突觸處理 (獲取連續的 syn_strength)
-    // 注意：即使沒有 preSpike，突觸也需要進行衰減/恢復計算
-    syn_in = synapse.step(DT, hasPreSpike);
+    // 2. 突觸處理 (獲取連續的等效注入電流 pA)
+    // 傳入 postVoltage 讓 COBA 模式可以計算驅動力
+    syn_in = synapse.step(DT, hasPreSpike, neuron.v);
 
     // 3. 計算外部注入電流 (ext_current): Constant Injection + GWN
     const iBase = (time >= 100 && time <= 300) ? constantInjection.value : 0;
@@ -144,13 +152,9 @@ const runSimulation = () => {
     const spiked = neuron.step(DT, time, syn_in, ext_i);
     vHistory.push(neuron.v);
     
-    // 視覺化電流 (Effective Total Current)
-    let visualCurrent = ext_i;
-    if (modelType.value === 'coba') {
-        visualCurrent += -syn_in * (neuron.v - cobaParams.V_E);
-    } else {
-        visualCurrent += syn_in;
-    }
+    // 視覺化電流 (Effective Total Current, 單位 pA)
+    // CUBA 與 COBA 的 syn_in 現在皆已是由突觸層計算好的電流
+    let visualCurrent = ext_i + syn_in;
     iHistory.push(visualCurrent);
 
     if (spiked) nSpikes.push(time);
@@ -207,10 +211,9 @@ watch([modelType, cubaParams, cobaParams], () => {
   if (fiTimeout) clearTimeout(fiTimeout);
   isCalculatingFI.value = true;
   fiTimeout = window.setTimeout(() => {
-    const NeuronClass = modelType.value === 'cuba' ? CUBANeuron : COBANeuron;
     const params = modelType.value === 'cuba' ? cubaParams : cobaParams;
     const iMax = modelType.value === 'cuba' ? 800 : 50;
-    fiCurveData.value = generateFICurve(NeuronClass, params as any, iMax);
+    fiCurveData.value = generateFICurve(LIFNeuron, params as any, iMax);
     isCalculatingFI.value = false;
     nextTick(() => renderMath());
   }, 300);

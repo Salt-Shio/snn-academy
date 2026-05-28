@@ -7,7 +7,6 @@ export abstract class BaseSynapse implements ISynapse {
   protected signalStrength: number = 0;
   public weight: number;
   public tauSyn: number;
-
   /**
    * @param weight 最大權重 (pA 或 nS)
    * @param tauSyn 電導/電流衰減時間常數 (ms)
