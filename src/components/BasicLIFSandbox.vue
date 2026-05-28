@@ -6,6 +6,8 @@ import { LIFNeuron as COBANeuron } from '../lib/snn/neurons/coba/LIFNeuron';
 import { PoissonSource } from '../lib/snn/PoissonSource';
 import { GWNSource } from '../lib/snn/GWNSource';
 import { calculateCV_ISI, generateFICurve } from '../lib/snn/metrics';
+import { StaticSynapse } from '../lib/snn/synapses/StaticSynapse';
+import { STPSynapse } from '../lib/snn/synapses/STPSynapse';
 
 // KaTeX 樣式 (僅前端 UI 依賴)
 import 'katex/dist/katex.min.css';
@@ -38,11 +40,27 @@ const STEPS = SIM_DURATION / DT;
 type InputMode = 'constant' | 'poisson';
 const inputMode = ref<InputMode>('constant');
 
+// --- 突觸模式 ---
+type SynapseType = 'static' | 'stp';
+const synapseType = ref<SynapseType>('static');
+
 // --- 共享參數 (Shared) ---
 const constantInjection = ref(250);      // pA (外部注入電流)
 const poissonPulseStrength = ref(15);    // 共享數值 (CUBA: pA, COBA: nS)
 const poissonRate = ref(50);             // Hz
 const noiseSigma = ref(0);               // 雜訊強度 (mV)
+
+// --- 突觸共通參數 ---
+const synapseParams = reactive({
+  tau_syn: 5.0, // ms
+});
+
+// --- STP 專屬參數 ---
+const stpParams = reactive({
+  U0: 0.5,
+  tau_d: 100,
+  tau_f: 50,
+});
 
 // --- CUBA 專屬參數 ---
 const cubaParams = reactive({
@@ -83,6 +101,17 @@ const runSimulation = () => {
     ? new CUBANeuron({ ...cubaParams }) 
     : new COBANeuron({ ...cobaParams });
 
+  // 根據選擇的突觸類型初始化
+  const synapse = synapseType.value === 'static'
+    ? new StaticSynapse(poissonPulseStrength.value, synapseParams.tau_syn)
+    : new STPSynapse(
+        poissonPulseStrength.value, 
+        synapseParams.tau_syn, 
+        stpParams.U0, 
+        stpParams.tau_d, 
+        stpParams.tau_f
+      );
+
   const pSource = new PoissonSource(poissonRate.value);
   
   const vHistory: number[] = [];
@@ -94,7 +123,15 @@ const runSimulation = () => {
     const time = i * DT;
     let syn_in = 0;
     
-    // 計算外部注入電流 (ext_current): Constant Injection + GWN
+    // 1. 檢查脈衝源 (僅在泊松模式)
+    const hasPreSpike = (inputMode.value === 'poisson') && pSource.step(DT);
+    if (hasPreSpike) pSpikes.push(time);
+
+    // 2. 突觸處理 (獲取連續的 syn_strength)
+    // 注意：即使沒有 preSpike，突觸也需要進行衰減/恢復計算
+    syn_in = synapse.step(DT, hasPreSpike);
+
+    // 3. 計算外部注入電流 (ext_current): Constant Injection + GWN
     const iBase = (time >= 100 && time <= 300) ? constantInjection.value : 0;
     const g_L_val = modelType.value === 'cuba' ? cubaParams.g_L : cobaParams.g_L;
     const c_m_val = modelType.value === 'cuba' ? cubaParams.C_m : cobaParams.C_m;
@@ -103,22 +140,14 @@ const runSimulation = () => {
     const iNoise = GWNSource.getNoiseCurrent(noiseSigma.value, tau_m, typeof g_L_val === 'number' ? g_L_val : 10, DT);
     const ext_i = iBase + iNoise;
 
-    // 計算突觸輸入 (syn_input)
-    if (inputMode.value === 'poisson') {
-      if (pSource.step(DT)) {
-        pSpikes.push(time);
-        syn_in = poissonPulseStrength.value;
-      }
-    }
-    
+    // 4. 推進神經元
     const spiked = neuron.step(DT, time, syn_in, ext_i);
     vHistory.push(neuron.v);
     
-    // 為了視覺化電流圖，如果是 COBA，我們記錄其產生的「等效總電流」
+    // 視覺化電流 (Effective Total Current)
     let visualCurrent = ext_i;
     if (modelType.value === 'coba') {
-        const i_syn = -syn_in * (neuron.v - cobaParams.V_E);
-        visualCurrent += i_syn;
+        visualCurrent += -syn_in * (neuron.v - cobaParams.V_E);
     } else {
         visualCurrent += syn_in;
     }
@@ -169,7 +198,7 @@ const getFIPath = (data: { current: number; freq: number }[]) => {
 };
 
 // 監聽變動
-watch([modelType, inputMode, constantInjection, poissonPulseStrength, poissonRate, noiseSigma, cubaParams, cobaParams], () => {
+watch([modelType, inputMode, constantInjection, poissonPulseStrength, poissonRate, noiseSigma, synapseType, synapseParams, stpParams, cubaParams, cobaParams], () => {
   runSimulation();
 }, { deep: true });
 
@@ -266,6 +295,60 @@ onMounted(() => {
         </div>
       </div>
 
+      <!-- 突觸動力學設定 (New Synapse Dynamics) -->
+      <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-xl space-y-6">
+        <div class="flex items-center gap-2">
+          <div class="w-2 h-6 bg-orange-500 rounded-full"></div>
+          <h2 class="text-xl font-bold text-white">突觸動力學 (Synapse Dynamics)</h2>
+        </div>
+
+        <!-- 突觸模型切換 -->
+        <div class="flex p-1 bg-gray-900 rounded-lg gap-1">
+          <button @click="synapseType = 'static'" :class="['flex-1 py-2 rounded-md font-bold transition text-sm', synapseType === 'static' ? 'bg-orange-600 text-white' : 'text-gray-500']">
+            靜態 (Static)
+          </button>
+          <button @click="synapseType = 'stp'" :class="['flex-1 py-2 rounded-md font-bold transition text-sm', synapseType === 'stp' ? 'bg-orange-600 text-white' : 'text-gray-500']">
+            短期可塑性 (STP)
+          </button>
+        </div>
+
+        <div class="space-y-4">
+          <!-- 共通：衰減常數 -->
+          <div class="flex flex-col">
+            <div class="flex justify-between items-end mb-2">
+              <label class="text-xs text-gray-400 font-bold uppercase">Decay (τ_syn)</label>
+              <span class="text-xl font-mono text-orange-400">{{ synapseParams.tau_syn }} <span class="text-xs">ms</span></span>
+            </div>
+            <input type="range" v-model.number="synapseParams.tau_syn" min="0" max="20" step="0.5" class="w-full accent-orange-500" />
+          </div>
+
+          <!-- STP 專屬參數 -->
+          <div v-if="synapseType === 'stp'" class="space-y-4 pt-4 border-t border-gray-700">
+            <div class="grid grid-cols-2 gap-4">
+               <div class="flex flex-col">
+                <label class="text-[10px] text-gray-500 uppercase font-bold mb-1">Release Prob (U0)</label>
+                <input type="range" v-model.number="stpParams.U0" min="0.01" max="1.0" step="0.05" class="w-full accent-orange-400" />
+                <span class="text-xs text-center text-orange-300 font-mono">{{ stpParams.U0 }}</span>
+              </div>
+              <div class="flex flex-col">
+                <label class="text-[10px] text-gray-500 uppercase font-bold mb-1">Depression (τ_d)</label>
+                <input type="range" v-model.number="stpParams.tau_d" min="10" max="500" step="10" class="w-full accent-orange-400" />
+                <span class="text-xs text-center text-orange-300 font-mono">{{ stpParams.tau_d }} ms</span>
+              </div>
+              <div class="flex flex-col">
+                <label class="text-[10px] text-gray-500 uppercase font-bold mb-1">Facilitation (τ_f)</label>
+                <input type="range" v-model.number="stpParams.tau_f" min="10" max="1000" step="10" class="w-full accent-orange-400" />
+                <span class="text-xs text-center text-orange-300 font-mono">{{ stpParams.tau_f }} ms</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <p class="text-[10px] text-gray-500 leading-tight italic">
+            {{ synapseType === 'static' ? '靜態模式：突觸強度固定。' : 'STP 模式：模擬資源耗盡(STD)與鈣累積(STF)效應。' }}
+        </p>
+      </div>
+
       <!-- 模型專屬物理特性 -->
       <div :class="['p-6 rounded-xl border shadow-xl transition-all duration-500', modelType === 'cuba' ? 'bg-indigo-900/20 border-indigo-500/50' : 'bg-emerald-900/20 border-emerald-500/50']">
         <div class="flex items-center gap-2 mb-6">
@@ -338,6 +421,20 @@ onMounted(() => {
 
     <!-- 視覺化圖表 -->
     <div class="space-y-4">
+      <!-- 1. Poisson Spike Train (Raster Plot) -->
+      <div v-if="inputMode === 'poisson'" class="bg-gray-900 p-4 rounded-lg border border-gray-800 shadow-inner">
+        <h3 class="text-xs font-bold text-orange-500 uppercase mb-2 tracking-widest">Input Spike Train (Poisson Source)</h3>
+        <div class="h-12 relative bg-black rounded border border-gray-900">
+          <svg viewBox="0 0 800 50" preserveAspectRatio="none" class="w-full h-full">
+            <line v-for="t in poissonSpikeTimes" :key="t" 
+              :x1="(t / SIM_DURATION) * 800" y1="5" 
+              :x2="(t / SIM_DURATION) * 800" y2="45" 
+              stroke="#fb923c" stroke-width="1.5" 
+            />
+          </svg>
+        </div>
+      </div>
+
       <div class="bg-gray-900 p-6 rounded-lg border border-gray-800 shadow-2xl">
         <h3 class="text-xs font-bold text-blue-500 uppercase mb-4 tracking-widest">Membrane Potential (mV)</h3>
         <div class="h-64 relative bg-black rounded overflow-hidden flex">
