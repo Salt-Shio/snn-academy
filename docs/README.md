@@ -6,6 +6,8 @@
 1. [基礎 LIF 模型](./math/LIF_Model.md) - Leaky Integrate-and-Fire
 2. [泊松脈衝源](./math/Poisson_Source.md) - Poisson Spike Process
 3. [高斯白雜訊源](./math/GWN_Source.md) - Gaussian White Noise
-4. (規劃中) 電導基礎 LIF 模型 - Conductance-based LIF
-4. (規劃中) 短期可塑性 - STP (Short-Term Plasticity)
+4. [特性量化指標](./math/Metrics.md) - F-I Curve & CV_ISI
+5. [電導基礎 LIF 模型](./math/COBA_LIF.md) - Conductance-based LIF
+6. (規劃中) 短期可塑性 - STP (Short-Term Plasticity)
+
 5. (規劃中) 脈衝時序依賴可塑性 - STDP
