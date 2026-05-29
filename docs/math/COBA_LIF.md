@@ -1,40 +1,36 @@
 # 電導基礎 Leaky Integrate-and-Fire (COBA LIF) 模型
 
-電導基礎模型 (Conductance-based) 是對基礎 CUBA 模型的一種重要生物物理擴充。在 COBA 中，輸入不再是簡單的電流，而是改變細胞膜的「電導」。
+電導基礎模型 (Conductance-based) 將外部輸入解釋為改變細胞膜的「電導」，其產生的電流大小與當前膜電位有關。
 
-## 1. 膜電位微分方程
+## 1. 膜電位微分方程 (Continuous Form)
 
-在多通道驅動下，膜電位的變化遵循以下方程：
-
-$$C_m \frac{dV(t)}{dt} = -g_L(V(t) - V_L) - g_E(t)(V(t) - V_E) - g_I(t)(V(t) - V_I) + I_{ext}(t)$$
+$$C_m \frac{dV(t)}{dt} = \underbrace{-g_L(V(t) - V_L)}_{\text{Leak}} + \underbrace{I_{syn}(t)}_{\text{Synaptic}} + \underbrace{I_{ext}(t)}_{\text{Electrode}}$$
 
 其中：
-- $C_m$: 膜電容 (Membrane Capacitance, pF)。
-- $g_L$: 漏電導 (Leak Conductance, nS)。
-- $V_L, V_E, V_I$: 分別為漏電流、興奮性、抑制性的**反轉電位 (Reversal Potential)**。
-- $g_E(t), g_I(t)$: 隨時間變化的興奮性與抑制性**突觸電導**。
-- $I_{ext}(t)$: 外部電極直接注入的電流（如常數注入或 GWN）。
+- $I_{syn}(t)$: 突觸輸入電流 (pA)。由物理轉換層 `CobaSynapse.ts` 提供。
+- $I_{ext}(t)$: 外部電極注入電流 (pA)。
 
-## 2. 核心觀念：驅動力 (Driving Force)
+---
 
-COBA 模型與 CUBA 模型最大的差異在於「驅動力」項：
-- **CUBA**: 注入電流 $I_{inj}$ 是恆定的，與 $V$ 無關。
-- **COBA**: 產生的電流為 $I_{syn} = g_{syn}(V - V_{rev})$。
+## 2. 物理映射：$I_{syn}$、電導與驅動力
 
-### 生理意義
-當膜電位 $V$ 接近某個通道的反轉電位 $V_{rev}$ 時，離子濃度梯度與電位的合力會變小，導致即便通道開得再大（$g_{syn}$ 很大），產生的電流也會趨於飽和甚至停止。這解釋了為什麼神經元的反應具有**非線性飽和**的特性。
+在 COBA 架構下，突觸電流 **$I_{syn}(t)$** 受歐姆定律約束：
+$$I_{syn}(t) = -g_{syn}(t)(V(t) - V_{rev})$$
 
-## 3. 數值積分實作 (`neurons/coba/LIFNeuron.ts`)
+其中突觸電導 $g_{syn}(t)$ 直接對應突觸訊號強度 **$S(t)$**：
+$$g_{syn}(t) = S(t)$$
 
-我們使用離散化的尤拉方法更新電位：
+這賦予了系統「非線性飽和」與「增益控制」的生物特性。關於 $S(t)$ 如何隨時間產生與衰減（靜態或具備短期可塑性），請參閱：
+*   [靜態突觸 (Static Synapse)](./Static_Synapse.md)
+*   [短期可塑性突觸 (STP Synapse)](./STP_Synapse.md)
 
-$$V_{t+\Delta t} = V_t + \frac{\Delta t}{C_m} \left[ -g_L(V_t - V_L) - g_E(V_t - V_E) - g_I(V_t - V_I) + I_{ext} \right]$$
+---
 
-## 4. 模型對比總結
+## 3. 數值積分：尤拉方法 (Euler Method)
 
-| 特性 | CUBA (Current-based) | COBA (Conductance-based) |
-| :--- | :--- | :--- |
-| **輸入解釋** | 外部輸入 = 電流項 $I_{inj}$ | 外部輸入 = 通道電導 $g_{syn}$ |
-| **電壓關係** | 電壓爬升與當前 $V$ 無關 | 電壓爬升隨 $V$ 接近 $V_{rev}$ 而減速 |
-| **物理參數** | 隱含在 $\tau_m$ 中 | 需要明確定義 $C_m, V_E, V_I$ |
-| **生物逼真度** | 低（線性簡化） | 高（反映離子通道物理） |
+$$V_{t+\Delta t} = V_t + \frac{\Delta t}{C_m} \left[ -g_L(V_t - V_L) - S(t)(V_t - V_{rev}) + I_{ext}(t) \right]$$
+
+## 4. 特性總結
+COBA 模型最逼真的地方在於突觸推力是**動態**的：
+1.  **電壓相依**：當 $V$ 接近 $V_{rev}$ 時，推力自動減弱。
+2.  **分流效應 (Shunting)**：高電導輸入會有效降低神經元的輸入電阻，縮短膜時間常數。

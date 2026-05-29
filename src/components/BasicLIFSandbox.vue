@@ -8,6 +8,7 @@ import { calculateCV_ISI, generateFICurve } from '../lib/snn/metrics';
 import { StaticSynapse } from '../lib/snn/synapses/StaticSynapse';
 import { STPSynapse } from '../lib/snn/synapses/STPSynapse';
 import { CobaSynapse } from '../lib/snn/synapses/CobaSynapse';
+import { CubaSynapse } from '../lib/snn/synapses/CubaSynapse';
 import type { ISynapse } from '../lib/snn/synapses/ISynapse';
 
 // KaTeX 樣式 (僅前端 UI 依賴)
@@ -115,10 +116,10 @@ const runSimulation = () => {
     );
   }
 
-  // 若為 COBA 模式，則套用裝飾器進行電導轉電流的計算
+  // 根據選擇的模型類型套用對應的物理轉換層 (Decorator)
   const synapse = modelType.value === 'coba' 
     ? new CobaSynapse(baseSynapse, cobaParams.V_E)
-    : baseSynapse;
+    : new CubaSynapse(baseSynapse);
 
   const pSource = new PoissonSource(poissonRate.value);
   

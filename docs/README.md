@@ -8,5 +8,6 @@
 3. [高斯白雜訊源](./math/GWN_Source.md) - Gaussian White Noise
 4. [特性量化指標](./math/Metrics.md) - F-I Curve & CV_ISI
 5. [電導基礎 LIF 模型](./math/COBA_LIF.md) - Conductance-based LIF
-6. [短期可塑性](./math/STP.md) - STP (Short-Term Plasticity)
-7. (規劃中) 脈衝時序依賴可塑性 - STDP
+6. [架構與物理機制矩陣](./math/Architecture_Matrix.md) - Architecture Matrix
+7. [短期可塑性](./math/STP.md) - STP (Short-Term Plasticity)
+8. (規劃中) 脈衝時序依賴可塑性 - STDP
