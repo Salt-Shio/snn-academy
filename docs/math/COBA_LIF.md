@@ -24,6 +24,27 @@ $$g_{syn}(t) = S(t)$$
 *   [靜態突觸 (Static Synapse)](./Static_Synapse.md)
 *   [短期可塑性突觸 (STP Synapse)](./STP_Synapse.md)
 
+### 多離子通道等效性證明 ($g_E, g_I, E_E, E_I$)
+
+在神經科學文獻中，COBA 方程常被寫作包含興奮性 (E) 與抑制性 (I) 兩個通道的形式：
+$$\tau_m\frac{dV(t)}{dt} = -(V(t)-V_L) - \frac{g_E(t)}{g_L}(V(t)-E_E) - \frac{g_I(t)}{g_L}(V(t)-E_I) + \frac{I_{ext}}{g_L}$$
+*(註：此式是將原微分方程同除以 $g_L$，並定義 $\tau_m = C_m/g_L$ 後的結果。反轉電位常被標示為 $E_x$ 或 $V_{rev,x}$)*
+
+我們的架構之所以能用單一的 $-S(t)(V - V_{rev})$ 涵蓋上述複雜形式，是因為**任意數量的電導分支都可以被數學約化（Mathematical Reduction）為單一有效電導與有效反轉電位**。
+
+假設同時存在興奮性與抑制性輸入，其總突觸電流為：
+$$I_{total\_syn} = -g_E(V - E_E) - g_I(V - E_I)$$
+展開並提取 $V$：
+$$I_{total\_syn} = -(g_E + g_I)V + (g_E E_E + g_I E_I)$$
+
+若令總電流等效為 $-S(t)(V - V_{rev}) = -SV + S V_{rev}$，對比係數即可得到映射關係：
+1. **有效總電導 $S(t)$** 是各分路電導的直和：
+   $$S(t) = g_E(t) + g_I(t)$$
+2. **有效反轉電位 $V_{rev}(t)$** 是各反轉電位的電導加權平均：
+   $$V_{rev}(t) = \frac{g_E(t) E_E + g_I(t) E_I}{g_E(t) + g_I(t)}$$
+
+因此，這證明了單一項的表達式在數學上是完備的。無論輸入源有多少種（E, I, NMDA, GABA 等），其物理總和永遠可以被約化為一組動態的 $(S_{eff}, V_{eff})$。
+
 ---
 
 ## 3. 數值積分：尤拉方法 (Euler Method)
