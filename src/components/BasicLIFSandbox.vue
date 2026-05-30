@@ -2,6 +2,7 @@
 import { ref, onMounted, reactive, watch, nextTick } from 'vue';
 // 導入統一的 LIFNeuron
 import { LIFNeuron } from '../lib/snn/neurons/LIFNeuron';
+import { ALIFNeuron } from '../lib/snn/neurons/ALIFNeuron';
 import { PoissonSource } from '../lib/snn/PoissonSource';
 import { GWNSource } from '../lib/snn/GWNSource';
 import { calculateCV_ISI, generateFICurve } from '../lib/snn/metrics';
@@ -86,6 +87,13 @@ const cobaParams = reactive({
   tref: 2,
 });
 
+// --- ALIF 專屬參數 ---
+const enableAdaptation = ref(false);
+const alifParams = reactive({
+  tau_w: 100, // ms
+  b: 20,      // pA
+});
+
 // --- 數據歷史 ---
 const voltageHistory = ref<number[]>([]);
 const currentHistory = ref<number[]>([]);
@@ -100,7 +108,10 @@ const isCalculatingFI = ref(false);
 const runSimulation = () => {
   // 根據選擇的模型類型初始化
   const params = modelType.value === 'cuba' ? cubaParams : cobaParams;
-  const neuron = new LIFNeuron({ ...params } as any);
+  
+  const neuron = enableAdaptation.value
+    ? new ALIFNeuron({ ...params, ...alifParams } as any)
+    : new LIFNeuron({ ...params } as any);
 
   // 根據選擇的突觸類型初始化基礎突觸
   let baseSynapse: ISynapse;
@@ -170,7 +181,7 @@ const runSimulation = () => {
 
 // SVG 繪圖輔助
 const getVoltagePath = (data: number[]) => {
-  if (data.length === 0) return "";
+  if (data.length === 0) return "0,200";
   const width = 800;
   const height = 200;
   const stepX = width / data.length;
@@ -179,7 +190,7 @@ const getVoltagePath = (data: number[]) => {
 };
 
 const getCurrentPath = (data: number[]) => {
-  if (data.length === 0) return "";
+  if (data.length === 0) return "0,60";
   const width = 800;
   const height = 60;
   const stepX = width / data.length;
@@ -189,7 +200,7 @@ const getCurrentPath = (data: number[]) => {
 };
 
 const getFIPath = (data: { current: number; freq: number }[]) => {
-  if (data.length === 0) return "";
+  if (data.length === 0) return "0,120";
   const width = 300;
   const height = 120;
   const maxI = modelType.value === 'cuba' ? 800 : 50; // COBA 強度範圍不同
@@ -203,18 +214,29 @@ const getFIPath = (data: { current: number; freq: number }[]) => {
 };
 
 // 監聽變動
-watch([modelType, inputMode, constantInjection, poissonPulseStrength, poissonRate, noiseSigma, synapseType, synapseParams, stpParams, cubaParams, cobaParams], () => {
+watch([modelType, inputMode, constantInjection, poissonPulseStrength, poissonRate, noiseSigma, synapseType, synapseParams, stpParams, cubaParams, cobaParams, enableAdaptation, alifParams], () => {
   runSimulation();
 }, { deep: true });
 
 let fiTimeout: number | null = null;
-watch([modelType, cubaParams, cobaParams], () => {
+watch([modelType, cubaParams, cobaParams, enableAdaptation, alifParams], () => {
   if (fiTimeout) clearTimeout(fiTimeout);
   isCalculatingFI.value = true;
   fiTimeout = window.setTimeout(() => {
     const params = modelType.value === 'cuba' ? cubaParams : cobaParams;
     const iMax = modelType.value === 'cuba' ? 800 : 50;
-    fiCurveData.value = generateFICurve(LIFNeuron, params as any, iMax);
+    
+    const NeuronClass = enableAdaptation.value ? ALIFNeuron : LIFNeuron;
+    const finalParams = enableAdaptation.value ? { ...params, ...alifParams } : params;
+    
+    // 定義物理轉換層裝飾器工廠
+    const decoratorFactory = (base: ISynapse) => {
+      return modelType.value === 'coba'
+        ? new CobaSynapse(base, cobaParams.V_E)
+        : new CubaSynapse(base);
+    };
+
+    fiCurveData.value = generateFICurve(NeuronClass as any, finalParams as any, iMax, 10, 1000, decoratorFactory);
     isCalculatingFI.value = false;
     nextTick(() => renderMath());
   }, 300);
@@ -419,6 +441,45 @@ onMounted(() => {
             <p class="text-[10px] text-gray-400 leading-relaxed italic">
                 {{ modelType === 'cuba' ? 'CUBA: 突觸輸入直接轉為恆定電流。' : 'COBA: 突觸輸入轉為電導，其產生的電流隨電壓 (V - V_rev) 變化。' }}
             </p>
+        </div>
+      </div>
+
+      <!-- ALIF 頻率適應擴充 -->
+      <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-xl space-y-6">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <div class="w-2 h-6 bg-red-500 rounded-full"></div>
+            <h2 class="text-xl font-bold text-white">頻率適應 (ALIF)</h2>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input type="checkbox" v-model="enableAdaptation" class="sr-only peer">
+            <div class="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
+          </label>
+        </div>
+
+        <div v-if="enableAdaptation" class="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+          <div class="flex flex-col">
+            <div class="flex justify-between items-end mb-2">
+              <label class="text-xs text-gray-400 font-bold uppercase">Adaptation Decay (τ_w)</label>
+              <span class="text-xl font-mono text-red-400">{{ alifParams.tau_w }} <span class="text-xs">ms</span></span>
+            </div>
+            <input type="range" v-model.number="alifParams.tau_w" min="10" max="1000" step="10" class="w-full accent-red-500" />
+          </div>
+          <div class="flex flex-col">
+            <div class="flex justify-between items-end mb-2">
+              <label class="text-xs text-gray-400 font-bold uppercase">Adaptation Increment (b)</label>
+              <span class="text-xl font-mono text-red-400">{{ alifParams.b }} <span class="text-xs">pA</span></span>
+            </div>
+            <input type="range" v-model.number="alifParams.b" min="0" max="100" step="5" class="w-full accent-red-500" />
+          </div>
+          <p class="text-[10px] text-gray-500 leading-tight italic">
+            啟用後，每次放電會增加適應性電流 $w$，產生「踩煞車」效應，使放電頻率隨時間下降。
+          </p>
+        </div>
+        <div v-else>
+          <p class="text-[10px] text-gray-400 leading-tight italic">
+            未啟用適應性電流。神經元將保持恆定的放電增益。
+          </p>
         </div>
       </div>
     </div>

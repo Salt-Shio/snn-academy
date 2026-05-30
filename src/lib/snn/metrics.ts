@@ -1,3 +1,5 @@
+import type { ISynapse } from './synapses/ISynapse';
+
 /**
  * 計算放電變異係數 (Coefficient of Variation of Inter-Spike Intervals)
  * @param spikeTimes 脈衝時間點陣列 (ms)
@@ -27,6 +29,7 @@ export function calculateCV_ISI(spikeTimes: number[]): number {
  * @param iMax 最大掃描強度 (CUBA: pA, COBA: nS)
  * @param iStep 強度步長
  * @param duration 每個取樣點的模擬時長 (ms)，預設 1000ms
+ * @param decoratorFactory 物理轉換層裝飾器工廠，將穩態訊號 S 轉換為物理等效電流 I_syn
  * @returns 包含強度與頻率的資料陣列
  */
 export function generateFICurve<P extends { V_L: number; C_m: number }>(
@@ -34,7 +37,8 @@ export function generateFICurve<P extends { V_L: number; C_m: number }>(
   params: P,
   iMax: number = 800,
   iStep: number = 10,
-  duration: number = 1000
+  duration: number = 1000,
+  decoratorFactory: (base: ISynapse) => ISynapse = (base) => base
 ): { current: number; freq: number }[] {
   const results: { current: number; freq: number }[] = [];
   const dt = 0.1;
@@ -42,12 +46,26 @@ export function generateFICurve<P extends { V_L: number; C_m: number }>(
 
   for (let i = 0; i <= iMax; i += iStep) {
     const tempNeuron = new NeuronClass(params);
+    
+    // 建立一個假的基礎突觸，永遠輸出恆定的穩態訊號強度 i (即 S)
+    const dummyBase: ISynapse = {
+      step: () => i,
+      reset: () => {}
+    };
+    
+    // 透過工廠函數套用對應的物理轉換層裝飾器 (CUBA 或 COBA)
+    const physicsSynapse = decoratorFactory(dummyBase);
+
     let spikeCount = 0;
 
     for (let step = 0; step < steps; step++) {
       const time = step * dt;
-      // 在 F-I 曲線中，我們測試 syn_input 的響應，ext_current 設為 0
-      if (tempNeuron.step(dt, time, i, 0)) {
+      
+      // 關鍵修復：透過物理裝飾器取得正確的 I_syn
+      // 這裡傳入 false 代表非脈衝觸發 (因為我們模擬的是穩態 S)，並傳入當前電壓供 COBA 計算
+      const i_syn = physicsSynapse.step(dt, false, tempNeuron.v);
+
+      if (tempNeuron.step(dt, time, i_syn, 0)) {
         spikeCount++;
       }
     }
