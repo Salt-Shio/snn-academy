@@ -1,4 +1,4 @@
-import type { INetworkNode } from '../network/INetworkNode';
+import type { INetworkNode } from '../network/core/INetworkNode';
 
 export type ConductanceProvider = number | ((t: number, v: number) => number);
 

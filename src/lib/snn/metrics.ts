@@ -1,4 +1,5 @@
-import type { ISynapse } from './synapses/ISynapse';
+import type { ISynapsePhysics } from './synapses/interfaces/ISynapsePhysics';
+import type { ISynapseDynamics } from './synapses/interfaces/ISynapseDynamics';
 
 /**
  * 計算放電變異係數 (Coefficient of Variation of Inter-Spike Intervals)
@@ -32,13 +33,13 @@ export function calculateCV_ISI(spikeTimes: number[]): number {
  * @param decoratorFactory 物理轉換層裝飾器工廠，將穩態訊號 S 轉換為物理等效電流 I_syn
  * @returns 包含強度與頻率的資料陣列
  */
-export function generateFICurve<P extends { V_L: number; C_m: number }>(
+export function generateFICurve<P extends { V_L: number; C_m: number; getVoltage: () => number }>(
   NeuronClass: new (params: P) => any,
   params: P,
   iMax: number = 800,
   iStep: number = 10,
   duration: number = 1000,
-  decoratorFactory: (base: ISynapse) => ISynapse = (base) => base
+  decoratorFactory: (base: ISynapseDynamics) => ISynapsePhysics = (base) => (base as any)
 ): { current: number; freq: number }[] {
   const results: { current: number; freq: number }[] = [];
   const dt = 0.1;
@@ -48,7 +49,7 @@ export function generateFICurve<P extends { V_L: number; C_m: number }>(
     const tempNeuron = new NeuronClass(params);
     
     // 建立一個假的基礎突觸，永遠輸出恆定的穩態訊號強度 i (即 S)
-    const dummyBase: ISynapse = {
+    const dummyBase: ISynapseDynamics = {
       step: () => i,
       reset: () => {}
     };
@@ -60,11 +61,9 @@ export function generateFICurve<P extends { V_L: number; C_m: number }>(
 
     for (let step = 0; step < steps; step++) {
       const time = step * dt;
+      // 透過物理裝飾器取得物理等效電流 I_syn
+      const i_syn = physicsSynapse.getEquivalentCurrent(dt, false, tempNeuron.getVoltage());
       
-      // 關鍵修復：透過物理裝飾器取得正確的 I_syn
-      // 這裡傳入 false 代表非脈衝觸發 (因為我們模擬的是穩態 S)，並傳入當前電壓供 COBA 計算
-      const i_syn = physicsSynapse.step(dt, false, tempNeuron.v);
-
       if (tempNeuron.step(dt, time, i_syn, 0)) {
         spikeCount++;
       }

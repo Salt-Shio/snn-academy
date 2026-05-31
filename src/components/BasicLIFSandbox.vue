@@ -1,19 +1,30 @@
 <script setup lang="ts">
 import { ref, onMounted, reactive, watch, nextTick } from 'vue';
-// 導入統一的 LIFNeuron
+// 導入神經元
 import { LIFNeuron } from '../lib/snn/neurons/LIFNeuron';
 import { ALIFNeuron } from '../lib/snn/neurons/ALIFNeuron';
 import { GWNSource } from '../lib/snn/GWNSource';
 import { calculateCV_ISI, generateFICurve } from '../lib/snn/metrics';
-import { SNNNetwork } from '../lib/snn/network/SNNNetwork';
-import { Connection } from '../lib/snn/network/Connection';
-import { SpikeGeneratorNode } from '../lib/snn/network/SpikeGeneratorNode';
-import { StateMonitor } from '../lib/snn/network/StateMonitor';
-import { StaticSynapse } from '../lib/snn/synapses/StaticSynapse';
-import { STPSynapse } from '../lib/snn/synapses/STPSynapse';
-import { CobaSynapse } from '../lib/snn/synapses/CobaSynapse';
-import { CubaSynapse } from '../lib/snn/synapses/CubaSynapse';
-import type { ISynapse } from '../lib/snn/synapses/ISynapse';
+
+// 導入網路層 (核心)
+import { SNNNetwork } from '../lib/snn/network/core/SNNNetwork';
+import { Connection } from '../lib/snn/network/core/Connection';
+import { SpikeGeneratorNode } from '../lib/snn/network/core/SpikeGeneratorNode';
+
+// 導入監聽器
+import { StateMonitor } from '../lib/snn/network/monitors/StateMonitor';
+import { SynapseMonitor } from '../lib/snn/network/monitors/SynapseMonitor';
+
+// 導入突觸實作
+import { StaticSynapse } from '../lib/snn/synapses/dynamics/StaticSynapse';
+import { STPSynapse } from '../lib/snn/synapses/dynamics/STPSynapse';
+import { STDPSynapse } from '../lib/snn/synapses/dynamics/STDPSynapse';
+import { CobaSynapse } from '../lib/snn/synapses/physics/CobaSynapse';
+import { CubaSynapse } from '../lib/snn/synapses/physics/CubaSynapse';
+
+// 導入介面
+import type { ISynapseDynamics } from '../lib/snn/synapses/interfaces/ISynapseDynamics';
+import type { ILearningRule } from '../lib/snn/synapses/interfaces/ILearningRule';
 
 // KaTeX 樣式 (僅前端 UI 依賴)
 import 'katex/dist/katex.min.css';
@@ -43,7 +54,7 @@ const STEPS = SIM_DURATION / DT;
 type InputMode = 'constant' | 'poisson';
 const inputMode = ref<InputMode>('constant');
 
-type SynapseType = 'static' | 'stp';
+type SynapseType = 'static' | 'stp' | 'stdp';
 const synapseType = ref<SynapseType>('static');
 
 // --- 共享參數 ---
@@ -64,13 +75,20 @@ const stpParams = reactive({
   tau_f: 50,
 });
 
+// --- STDP 專屬參數 ---
+const stdpParams = reactive({
+  A_plus: 0.008,
+  A_minus: 0.0088,
+  tau_stdp: 20,
+});
+
 // --- CUBA 專屬參數 ---
 const cubaParams = reactive({
   V_th: -55,
   V_reset: -75,
   V_L: -75,
   g_L: 10,  // nS
-  C_m: 100, // pF (由 tau_m=10ms 推導: Cm = tau_m * gL)
+  C_m: 100, // pF
   tref: 2,
 });
 
@@ -82,7 +100,6 @@ const cobaParams = reactive({
   g_L: 10,   // nS
   C_m: 200,  // pF
   V_E: 0,    // 興奮性反轉電位 (mV)
-  V_I: -80,  // 抑制性反轉電位 (mV)
   tref: 2,
 });
 
@@ -96,6 +113,7 @@ const alifParams = reactive({
 // --- 數據歷史 ---
 const voltageHistory = ref<number[]>([]);
 const currentHistory = ref<number[]>([]);
+const weightHistory = ref<number[]>([]);
 const neuronSpikeTimes = ref<number[]>([]);
 const poissonSpikeTimes = ref<number[]>([]);
 
@@ -108,7 +126,7 @@ const runSimulation = () => {
   const network = new SNNNetwork();
   const params = modelType.value === 'cuba' ? cubaParams : cobaParams;
 
-  // 1. 建立 Source 節點 (脈衝產生器)
+  // 1. 建立 Source 節點
   const sourceNode = new SpikeGeneratorNode(poissonRate.value);
   network.addNode('source', sourceNode);
 
@@ -118,31 +136,51 @@ const runSimulation = () => {
     : new LIFNeuron({ ...params } as any);
   network.addNode('target', targetNeuron);
 
-  // 3. 根據選擇的突觸類型初始化基礎突觸
-  let baseSynapse: ISynapse;
+  // 3. 建立突觸動態與學習規則
+  let dynamics: ISynapseDynamics;
+  let learningRule: ILearningRule | undefined = undefined;
+
   if (synapseType.value === 'static') {
-    baseSynapse = new StaticSynapse(poissonPulseStrength.value, synapseParams.tau_syn);
-  } else {
-    baseSynapse = new STPSynapse(
+    dynamics = new StaticSynapse(poissonPulseStrength.value, synapseParams.tau_syn);
+  } else if (synapseType.value === 'stp') {
+    dynamics = new STPSynapse(
       poissonPulseStrength.value, 
       synapseParams.tau_syn, 
       stpParams.U0, 
       stpParams.tau_d, 
       stpParams.tau_f
     );
+  } else {
+    // STDP 模式：修正單位失配問題
+    // w_max 應為初始權重的 2 倍，確保有足夠的成長空間
+    const w_max = poissonPulseStrength.value * 2;
+    
+    // 學習增量 A_plus/A_minus 應相對於 w_max，而非絕對數值
+    // 這樣不論是在 CUBA (pA) 還是 COBA (nS) 下，學習速率都能保持一致
+    const stdp = new STDPSynapse(
+      poissonPulseStrength.value,
+      synapseParams.tau_syn,
+      stdpParams.A_plus, 
+      stdpParams.A_minus,
+      stdpParams.tau_stdp,
+      w_max
+    );
+    dynamics = stdp;
+    learningRule = stdp;
   }
 
-  // 套用物理轉換層裝飾器
-  const physicsSynapse = modelType.value === 'coba' 
-    ? new CobaSynapse(baseSynapse, cobaParams.V_E)
-    : new CubaSynapse(baseSynapse);
+  // 套用物理轉換層裝飾器 (只包裝動態層)
+  const transmission = modelType.value === 'coba' 
+    ? new CobaSynapse(dynamics, cobaParams.V_E)
+    : new CubaSynapse(dynamics);
 
-  // 4. 建立並註冊連線
-  network.addConnection(new Connection('source', 'target', physicsSynapse));
+  // 4. 建立並註冊連線 (物理傳遞與學習規則路徑分離)
+  network.addConnection(new Connection('source', 'target', transmission, learningRule));
   
-  // 5. 建立監聽器 (Listener)
+  // 5. 建立監聽器
   const targetMonitor = new StateMonitor(network, 'target');
   const sourceMonitor = new StateMonitor(network, 'source');
+  const synapseMonitor = new SynapseMonitor(network, 'source', 'target');
 
   for (let i = 0; i < STEPS; i++) {
     const time = i * DT;
@@ -173,8 +211,8 @@ const runSimulation = () => {
   // 7. 更新響應式數據 (從監聽器抄出來)
   voltageHistory.value = targetMonitor.vHistory;
   currentHistory.value = targetMonitor.iHistory;
+  weightHistory.value = synapseMonitor.wHistory;
   neuronSpikeTimes.value = targetMonitor.spikeTimes;
-  // 僅在 Poisson 模式下顯示前級脈衝
   poissonSpikeTimes.value = inputMode.value === 'poisson' ? sourceMonitor.spikeTimes : [];
 
   cvISI.value = calculateCV_ISI(targetMonitor.spikeTimes);
@@ -200,11 +238,24 @@ const getCurrentPath = (data: number[]) => {
   return data.map((iVal, idx) => `${(idx * stepX).toFixed(2)},${scaleI(iVal).toFixed(2)}`).join(" L ");
 };
 
+const getWeightPath = (data: number[]) => {
+  if (data.length === 0) return "0,60";
+  const width = 400;
+  const height = 60;
+  const stepX = width / data.length;
+  // 動態尋找目前的權重邊界，若數據全為 0 則給予基礎範圍
+  const maxW = data.reduce((max, val) => Math.max(max, val), poissonPulseStrength.value * 2);
+  const minW = data.reduce((min, val) => Math.min(min, val), 0);
+  const range = (maxW - minW) || 1;
+  const scaleW = (w: number) => height - ((w - minW) / range) * height;
+  return data.map((w, i) => `${(i * stepX).toFixed(2)},${scaleW(w).toFixed(2)}`).join(" L ");
+};
+
 const getFIPath = (data: { current: number; freq: number }[]) => {
   if (data.length === 0) return "0,120";
   const width = 300;
   const height = 120;
-  const maxI = modelType.value === 'cuba' ? 800 : 50; // COBA 強度範圍不同
+  const maxI = modelType.value === 'cuba' ? 800 : 50; 
   const maxF = data.reduce((max, d) => Math.max(max, d.freq), 100);
   
   return data.map(d => {
@@ -215,7 +266,7 @@ const getFIPath = (data: { current: number; freq: number }[]) => {
 };
 
 // 監聽變動
-watch([modelType, inputMode, constantInjection, poissonPulseStrength, poissonRate, noiseSigma, synapseType, synapseParams, stpParams, cubaParams, cobaParams, enableAdaptation, alifParams], () => {
+watch([modelType, inputMode, constantInjection, poissonPulseStrength, poissonRate, noiseSigma, synapseType, synapseParams, stpParams, stdpParams, cubaParams, cobaParams, enableAdaptation, alifParams], () => {
   runSimulation();
 }, { deep: true });
 
@@ -226,12 +277,10 @@ watch([modelType, cubaParams, cobaParams, enableAdaptation, alifParams], () => {
   fiTimeout = window.setTimeout(() => {
     const params = modelType.value === 'cuba' ? cubaParams : cobaParams;
     const iMax = modelType.value === 'cuba' ? 800 : 50;
-    
     const NeuronClass = enableAdaptation.value ? ALIFNeuron : LIFNeuron;
     const finalParams = enableAdaptation.value ? { ...params, ...alifParams } : params;
     
-    // 定義物理轉換層裝飾器工廠
-    const decoratorFactory = (base: ISynapse) => {
+    const decoratorFactory = (base: ISynapseDynamics) => {
       return modelType.value === 'coba'
         ? new CobaSynapse(base, cobaParams.V_E)
         : new CubaSynapse(base);
@@ -254,22 +303,15 @@ onMounted(() => {
     <!-- 頂部模型切換 -->
     <div class="flex flex-col items-center gap-4">
       <div class="flex p-1 bg-gray-800 rounded-xl border border-gray-700 shadow-lg">
-        <button 
-          @click="modelType = 'cuba'" 
-          :class="['px-8 py-3 rounded-lg font-bold transition-all duration-300 flex items-center gap-2', modelType === 'cuba' ? 'bg-indigo-600 text-white shadow-indigo-500/50 shadow-lg' : 'text-gray-400 hover:text-gray-200']"
-        >
+        <button @click="modelType = 'cuba'" :class="['px-8 py-3 rounded-lg font-bold transition-all duration-300 flex items-center gap-2', modelType === 'cuba' ? 'bg-indigo-600 text-white shadow-indigo-500/50 shadow-lg' : 'text-gray-400 hover:text-gray-200']">
           <span class="w-2 h-2 rounded-full bg-white animate-pulse" v-if="modelType === 'cuba'"></span>
           CUBA Model
         </button>
-        <button 
-          @click="modelType = 'coba'" 
-          :class="['px-8 py-3 rounded-lg font-bold transition-all duration-300 flex items-center gap-2', modelType === 'coba' ? 'bg-emerald-600 text-white shadow-emerald-500/50 shadow-lg' : 'text-gray-400 hover:text-gray-200']"
-        >
+        <button @click="modelType = 'coba'" :class="['px-8 py-3 rounded-lg font-bold transition-all duration-300 flex items-center gap-2', modelType === 'coba' ? 'bg-emerald-600 text-white shadow-emerald-500/50 shadow-lg' : 'text-gray-400 hover:text-gray-200']">
           <span class="w-2 h-2 rounded-full bg-white animate-pulse" v-if="modelType === 'coba'"></span>
           COBA Model
         </button>
       </div>
-      <p class="text-xs text-gray-500 font-mono tracking-tighter">Current-based vs Conductance-based Integration</p>
     </div>
 
     <!-- 參數設定面板 -->
@@ -278,28 +320,21 @@ onMounted(() => {
       <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-xl space-y-6">
         <div class="flex items-center gap-2">
           <div class="w-2 h-6 bg-yellow-500 rounded-full"></div>
-          <h2 class="text-xl font-bold text-white">輸入訊號源 (Input Signal)</h2>
+          <h2 class="text-xl font-bold text-white">輸入訊號源</h2>
         </div>
-
         <div class="flex p-1 bg-gray-900 rounded-lg gap-1">
-          <button @click="inputMode = 'constant'" :class="['flex-1 py-2 rounded-md font-bold transition text-sm', inputMode === 'constant' ? 'bg-gray-600 text-white' : 'text-gray-500']">
-            常數注入
-          </button>
-          <button @click="inputMode = 'poisson'" :class="['flex-1 py-2 rounded-md font-bold transition text-sm', inputMode === 'poisson' ? 'bg-orange-600 text-white' : 'text-gray-500']">
-            泊松脈衝
-          </button>
+          <button @click="inputMode = 'constant'" :class="['flex-1 py-2 rounded-md font-bold transition text-sm', inputMode === 'constant' ? 'bg-gray-600 text-white' : 'text-gray-500']">常數注入</button>
+          <button @click="inputMode = 'poisson'" :class="['flex-1 py-2 rounded-md font-bold transition text-sm', inputMode === 'poisson' ? 'bg-orange-600 text-white' : 'text-gray-500']">泊松脈衝</button>
         </div>
-
         <div class="space-y-4">
-          <div class="flex flex-col">
+          <div v-if="inputMode === 'constant'" class="flex flex-col animate-in fade-in duration-300">
             <div class="flex justify-between items-end mb-2">
               <label class="text-xs text-gray-400 font-bold uppercase">Base Injection (Iinj)</label>
               <span class="text-2xl font-mono text-yellow-400">{{ constantInjection }} <span class="text-xs">pA</span></span>
             </div>
             <input type="range" v-model.number="constantInjection" min="0" max="600" step="10" class="w-full accent-yellow-500" />
           </div>
-
-          <div v-if="inputMode === 'poisson'" class="space-y-4 pt-4 border-t border-gray-700">
+          <div v-if="inputMode === 'poisson'" class="space-y-4 animate-in fade-in duration-300">
             <div class="flex flex-col">
               <div class="flex justify-between items-end mb-2">
                 <label class="text-xs text-gray-400 font-bold uppercase">{{ modelType === 'cuba' ? 'Pulse Current' : 'Pulse Conductance' }}</label>
@@ -315,7 +350,6 @@ onMounted(() => {
               <input type="range" v-model.number="poissonRate" min="1" max="200" step="1" class="w-full accent-orange-300" />
             </div>
           </div>
-
           <div class="flex flex-col pt-4 border-t border-gray-700">
             <div class="flex justify-between items-end mb-2">
               <label class="text-xs text-gray-400 font-bold uppercase">Background Noise (σ)</label>
@@ -326,203 +360,125 @@ onMounted(() => {
         </div>
       </div>
 
-      <!-- 突觸動力學設定 (New Synapse Dynamics) -->
-      <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-xl space-y-6">
+      <!-- 突觸動力學設定 (僅在泊松模式顯示) -->
+      <div v-if="inputMode === 'poisson'" class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-xl space-y-6 animate-in zoom-in-95 duration-300">
         <div class="flex items-center gap-2">
           <div class="w-2 h-6 bg-orange-500 rounded-full"></div>
-          <h2 class="text-xl font-bold text-white">突觸動力學 (Synapse Dynamics)</h2>
+          <h2 class="text-xl font-bold text-white">突觸動力學 (Synapse)</h2>
         </div>
-
-        <!-- 突觸模型切換 -->
-        <div class="flex p-1 bg-gray-900 rounded-lg gap-1">
-          <button @click="synapseType = 'static'" :class="['flex-1 py-2 rounded-md font-bold transition text-sm', synapseType === 'static' ? 'bg-orange-600 text-white' : 'text-gray-500']">
-            靜態 (Static)
-          </button>
-          <button @click="synapseType = 'stp'" :class="['flex-1 py-2 rounded-md font-bold transition text-sm', synapseType === 'stp' ? 'bg-orange-600 text-white' : 'text-gray-500']">
-            短期可塑性 (STP)
-          </button>
+        <div class="grid grid-cols-3 p-1 bg-gray-900 rounded-lg gap-1">
+          <button @click="synapseType = 'static'" :class="['py-2 rounded-md font-bold transition text-[10px]', synapseType === 'static' ? 'bg-orange-600 text-white' : 'text-gray-500']">Static</button>
+          <button @click="synapseType = 'stp'" :class="['py-2 rounded-md font-bold transition text-[10px]', synapseType === 'stp' ? 'bg-orange-600 text-white' : 'text-gray-500']">STP</button>
+          <button @click="synapseType = 'stdp'" :class="['py-2 rounded-md font-bold transition text-[10px]', synapseType === 'stdp' ? 'bg-purple-600 text-white' : 'text-gray-500']">STDP</button>
         </div>
-
         <div class="space-y-4">
-          <!-- 共通：衰減常數 -->
           <div class="flex flex-col">
-            <div class="flex justify-between items-end mb-2">
-              <label class="text-xs text-gray-400 font-bold uppercase">Decay (τ_syn)</label>
-              <span class="text-xl font-mono text-orange-400">{{ synapseParams.tau_syn }} <span class="text-xs">ms</span></span>
+            <div class="flex justify-between items-end mb-1">
+              <label class="text-[10px] text-gray-400 font-bold uppercase">Decay (τ_syn)</label>
+              <span class="text-sm font-mono text-orange-400">{{ synapseParams.tau_syn }} ms</span>
             </div>
-            <input type="range" v-model.number="synapseParams.tau_syn" min="0" max="20" step="0.5" class="w-full accent-orange-500" />
+            <input type="range" v-model.number="synapseParams.tau_syn" min="0.5" max="20" step="0.5" class="w-full accent-orange-500" />
           </div>
-
-          <!-- STP 專屬參數 -->
-          <div v-if="synapseType === 'stp'" class="space-y-4 pt-4 border-t border-gray-700">
-            <div class="grid grid-cols-2 gap-4">
-               <div class="flex flex-col">
-                <label class="text-[10px] text-gray-500 uppercase font-bold mb-1">Release Prob (U0)</label>
-                <input type="range" v-model.number="stpParams.U0" min="0.01" max="1.0" step="0.05" class="w-full accent-orange-400" />
-                <span class="text-xs text-center text-orange-300 font-mono">{{ stpParams.U0 }}</span>
-              </div>
+          <div v-if="synapseType === 'stp'" class="grid grid-cols-2 gap-4 pt-4 border-t border-gray-700 animate-in fade-in duration-300">
               <div class="flex flex-col">
-                <label class="text-[10px] text-gray-500 uppercase font-bold mb-1">Depression (τ_d)</label>
+                <label class="text-[9px] text-gray-500 uppercase font-bold mb-1">Depression (τ_d)</label>
                 <input type="range" v-model.number="stpParams.tau_d" min="10" max="500" step="10" class="w-full accent-orange-400" />
-                <span class="text-xs text-center text-orange-300 font-mono">{{ stpParams.tau_d }} ms</span>
               </div>
               <div class="flex flex-col">
-                <label class="text-[10px] text-gray-500 uppercase font-bold mb-1">Facilitation (τ_f)</label>
+                <label class="text-[9px] text-gray-500 uppercase font-bold mb-1">Facilitation (τ_f)</label>
                 <input type="range" v-model.number="stpParams.tau_f" min="10" max="1000" step="10" class="w-full accent-orange-400" />
-                <span class="text-xs text-center text-orange-300 font-mono">{{ stpParams.tau_f }} ms</span>
               </div>
-            </div>
+          </div>
+          <div v-if="synapseType === 'stdp'" class="space-y-4 pt-4 border-t border-gray-700 animate-in fade-in duration-300">
+              <div class="grid grid-cols-2 gap-4">
+                  <div class="flex flex-col">
+                    <label class="text-[9px] text-purple-400 uppercase font-bold mb-1">LTP rate (A+)</label>
+                    <input type="range" v-model.number="stdpParams.A_plus" min="0.001" max="0.05" step="0.001" class="w-full accent-purple-500" />
+                  </div>
+                  <div class="flex flex-col">
+                    <label class="text-[9px] text-purple-400 uppercase font-bold mb-1">LTD rate (A-)</label>
+                    <input type="range" v-model.number="stdpParams.A_minus" min="0.001" max="0.05" step="0.001" class="w-full accent-purple-500" />
+                  </div>
+              </div>
+              <div class="flex flex-col">
+                <div class="flex justify-between text-[9px] text-purple-400 font-bold uppercase mb-1">
+                  <span>Trace Decay (τ_stdp)</span>
+                  <span>{{ stdpParams.tau_stdp }} ms</span>
+                </div>
+                <input type="range" v-model.number="stdpParams.tau_stdp" min="5" max="100" step="1" class="w-full accent-purple-500" />
+              </div>
           </div>
         </div>
-        <p class="text-[10px] text-gray-500 leading-tight italic">
-            {{ synapseType === 'static' ? '靜態模式：突觸強度固定。' : 'STP 模式：模擬資源耗盡(STD)與鈣累積(STF)效應。' }}
-        </p>
       </div>
 
-      <!-- 模型專屬物理特性 -->
+      <!-- 神經元物理特性 -->
       <div :class="['p-6 rounded-xl border shadow-xl transition-all duration-500', modelType === 'cuba' ? 'bg-indigo-900/20 border-indigo-500/50' : 'bg-emerald-900/20 border-emerald-500/50']">
         <div class="flex items-center gap-2 mb-6">
           <div :class="['w-2 h-6 rounded-full', modelType === 'cuba' ? 'bg-indigo-500' : 'bg-emerald-500']"></div>
-          <h2 class="text-xl font-bold text-white">{{ modelType === 'cuba' ? 'CUBA 物理參數' : 'COBA 物理參數' }}</h2>
+          <h2 class="text-xl font-bold text-white">神經元物理特性</h2>
         </div>
-
-        <div v-if="modelType === 'cuba'" class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
            <div class="flex flex-col">
             <div class="flex justify-between text-[10px] text-gray-400 font-bold uppercase mb-1">
               <span>Threshold (V_th)</span>
-              <span class="text-indigo-400">{{ cubaParams.V_th }} mV</span>
+              <span>{{ modelType === 'cuba' ? cubaParams.V_th : cobaParams.V_th }} mV</span>
             </div>
-            <input type="range" v-model.number="cubaParams.V_th" min="-70" max="-40" step="1" class="w-full accent-indigo-500" />
+            <input v-if="modelType === 'cuba'" type="range" v-model.number="cubaParams.V_th" min="-70" max="-40" step="1" class="w-full accent-indigo-500" />
+            <input v-else type="range" v-model.number="cobaParams.V_th" min="-70" max="-40" step="1" class="w-full accent-emerald-500" />
           </div>
-          <div class="flex flex-col">
-            <div class="flex justify-between text-[10px] text-gray-400 font-bold uppercase mb-1">
-              <span>Capacitance (C_m)</span>
-              <span class="text-indigo-400">{{ cubaParams.C_m }} pF</span>
-            </div>
-            <input type="range" v-model.number="cubaParams.C_m" min="50" max="500" step="10" class="w-full accent-indigo-500" />
-          </div>
-          <div class="flex flex-col">
-            <div class="flex justify-between text-[10px] text-gray-400 font-bold uppercase mb-1">
-              <span>Leak G (g_L)</span>
-              <span class="text-indigo-400">{{ cubaParams.g_L }} nS</span>
-            </div>
-            <input type="range" v-model.number="cubaParams.g_L" min="1" max="50" step="1" class="w-full accent-indigo-500" />
-          </div>
-        </div>
-
-        <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
-          <div class="flex flex-col">
-            <div class="flex justify-between text-[10px] text-gray-400 font-bold uppercase mb-1">
-              <span>Threshold (V_th)</span>
-              <span class="text-emerald-400">{{ cobaParams.V_th }} mV</span>
-            </div>
-            <input type="range" v-model.number="cobaParams.V_th" min="-70" max="-40" step="1" class="w-full accent-emerald-500" />
-          </div>
-          <div class="flex flex-col">
-            <div class="flex justify-between text-[10px] text-gray-400 font-bold uppercase mb-1">
-              <span>Capacitance (C_m)</span>
-              <span class="text-emerald-400">{{ cobaParams.C_m }} pF</span>
-            </div>
-            <input type="range" v-model.number="cobaParams.C_m" min="50" max="500" step="10" class="w-full accent-emerald-500" />
-          </div>
-          <div class="flex flex-col">
+          <div v-if="modelType === 'coba'" class="flex flex-col">
             <div class="flex justify-between text-[10px] text-gray-400 font-bold uppercase mb-1">
               <span>Exc Reversal (V_E)</span>
               <span class="text-emerald-400">{{ cobaParams.V_E }} mV</span>
             </div>
             <input type="range" v-model.number="cobaParams.V_E" min="-20" max="20" step="1" class="w-full accent-emerald-500" />
           </div>
-          <div class="flex flex-col">
-            <div class="flex justify-between text-[10px] text-gray-400 font-bold uppercase mb-1">
-              <span>Inh Reversal (V_I)</span>
-              <span class="text-emerald-400">{{ cobaParams.V_I }} mV</span>
-            </div>
-            <input type="range" v-model.number="cobaParams.V_I" min="-100" max="-60" step="1" class="w-full accent-emerald-500" />
-          </div>
         </div>
-
         <div class="mt-8 p-4 bg-black/40 rounded border border-white/10">
-            <p class="text-[10px] text-gray-400 leading-relaxed italic">
-                {{ modelType === 'cuba' ? 'CUBA: 突觸輸入直接轉為恆定電流。' : 'COBA: 突觸輸入轉為電導，其產生的電流隨電壓 (V - V_rev) 變化。' }}
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-[10px] text-red-400 font-bold uppercase tracking-widest">Enable ALIF (Adaptation)</span>
+                <input type="checkbox" v-model="enableAdaptation" class="accent-red-500" />
+            </div>
+            <p class="text-[9px] text-gray-500 leading-relaxed italic">
+                {{ modelType === 'cuba' ? 'CUBA: 電流模式，輸入直接注入。' : 'COBA: 電導模式，輸入受電壓差調節。' }}
             </p>
-        </div>
-      </div>
-
-      <!-- ALIF 頻率適應擴充 -->
-      <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-xl space-y-6">
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-2">
-            <div class="w-2 h-6 bg-red-500 rounded-full"></div>
-            <h2 class="text-xl font-bold text-white">頻率適應 (ALIF)</h2>
-          </div>
-          <label class="relative inline-flex items-center cursor-pointer">
-            <input type="checkbox" v-model="enableAdaptation" class="sr-only peer">
-            <div class="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
-          </label>
-        </div>
-
-        <div v-if="enableAdaptation" class="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
-          <div class="flex flex-col">
-            <div class="flex justify-between items-end mb-2">
-              <label class="text-xs text-gray-400 font-bold uppercase">Adaptation Decay (τ_w)</label>
-              <span class="text-xl font-mono text-red-400">{{ alifParams.tau_w }} <span class="text-xs">ms</span></span>
-            </div>
-            <input type="range" v-model.number="alifParams.tau_w" min="10" max="1000" step="10" class="w-full accent-red-500" />
-          </div>
-          <div class="flex flex-col">
-            <div class="flex justify-between items-end mb-2">
-              <label class="text-xs text-gray-400 font-bold uppercase">Adaptation Increment (b)</label>
-              <span class="text-xl font-mono text-red-400">{{ alifParams.b }} <span class="text-xs">pA</span></span>
-            </div>
-            <input type="range" v-model.number="alifParams.b" min="0" max="100" step="5" class="w-full accent-red-500" />
-          </div>
-          <p class="text-[10px] text-gray-500 leading-tight italic">
-            啟用後，每次放電會增加適應性電流 $w$，產生「踩煞車」效應，使放電頻率隨時間下降。
-          </p>
-        </div>
-        <div v-else>
-          <p class="text-[10px] text-gray-400 leading-tight italic">
-            未啟用適應性電流。神經元將保持恆定的放電增益。
-          </p>
         </div>
       </div>
     </div>
 
     <!-- 視覺化圖表 -->
     <div class="space-y-4">
-      <!-- 1. Poisson Spike Train (Raster Plot) -->
-      <div v-if="inputMode === 'poisson'" class="bg-gray-900 p-4 rounded-lg border border-gray-800 shadow-inner">
-        <h3 class="text-xs font-bold text-orange-500 uppercase mb-2 tracking-widest">Input Spike Train (Poisson Source)</h3>
-        <div class="h-12 relative bg-black rounded border border-gray-900">
+      <div v-if="inputMode === 'poisson'" class="bg-gray-900 p-4 rounded-lg border border-gray-800">
+        <div class="flex justify-between items-center mb-2">
+           <h3 class="text-[10px] font-bold text-orange-500 uppercase tracking-widest">Input Spike Train</h3>
+           <div v-if="synapseType === 'stdp'" class="flex items-center gap-4 bg-black/40 px-3 py-1 rounded border border-purple-500/30 animate-in fade-in duration-500">
+              <span class="text-[9px] text-purple-400 font-bold uppercase">Synaptic Weight Evolution</span>
+              <div class="w-48 h-6 relative bg-black rounded">
+                <svg viewBox="0 0 400 60" preserveAspectRatio="none" class="w-full h-full">
+                  <path :d="'M ' + getWeightPath(weightHistory)" fill="none" stroke="#a855f7" stroke-width="2" />
+                </svg>
+              </div>
+           </div>
+        </div>
+        <div class="h-10 relative bg-black rounded border border-gray-900">
           <svg viewBox="0 0 800 50" preserveAspectRatio="none" class="w-full h-full">
-            <line v-for="t in poissonSpikeTimes" :key="t" 
-              :x1="(t / SIM_DURATION) * 800" y1="5" 
-              :x2="(t / SIM_DURATION) * 800" y2="45" 
-              stroke="#fb923c" stroke-width="1.5" 
-            />
+            <line v-for="t in poissonSpikeTimes" :key="t" :x1="(t / SIM_DURATION) * 800" y1="5" :x2="(t / SIM_DURATION) * 800" y2="45" stroke="#fb923c" stroke-width="1" opacity="0.6" />
           </svg>
         </div>
       </div>
-
       <div class="bg-gray-900 p-6 rounded-lg border border-gray-800 shadow-2xl">
         <h3 class="text-xs font-bold text-blue-500 uppercase mb-4 tracking-widest">Membrane Potential (mV)</h3>
         <div class="h-64 relative bg-black rounded overflow-hidden flex">
-          <div class="flex flex-col justify-between text-[9px] font-mono text-gray-600 mr-2 py-1">
-            <span>+5</span><span>-40</span><span>-85</span>
-          </div>
+          <div class="flex flex-col justify-between text-[9px] font-mono text-gray-600 mr-2 py-1"><span>+5</span><span>-40</span><span>-85</span></div>
           <div class="flex-1 relative">
             <svg viewBox="0 0 800 200" preserveAspectRatio="none" class="w-full h-full">
-              <line x1="0" y1="50" x2="800" y2="50" stroke="#1a202c" stroke-width="0.5" />
-              <line x1="0" y1="100" x2="800" y2="100" stroke="#1a202c" stroke-width="0.5" />
-              <line x1="0" y1="150" x2="800" y2="150" stroke="#1a202c" stroke-width="0.5" />
+              <line x1="0" y1="50" x2="800" y2="50" stroke="#1a202c" stroke-width="0.5" /><line x1="0" y1="100" x2="800" y2="100" stroke="#1a202c" stroke-width="0.5" /><line x1="0" y1="150" x2="800" y2="150" stroke="#1a202c" stroke-width="0.5" />
               <path :d="'M ' + getVoltagePath(voltageHistory)" fill="none" stroke="#3b82f6" stroke-width="2" />
             </svg>
           </div>
         </div>
       </div>
-
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <!-- Effective Total Current -->
         <div class="bg-gray-900 p-4 rounded-lg border border-gray-800">
           <h3 class="text-xs font-bold text-yellow-500 uppercase mb-2 tracking-widest">Effective Total Current (pA)</h3>
           <div class="h-20 relative bg-black rounded">
@@ -531,38 +487,22 @@ onMounted(() => {
             </svg>
           </div>
         </div>
-
-        <!-- F-I Curve -->
         <div class="bg-gray-900 p-6 rounded-lg border border-gray-800 shadow-xl flex flex-col">
           <div class="flex justify-between items-center mb-4">
-            <h3 class="text-xs font-bold text-emerald-500 uppercase tracking-widest">F-I Curve (Response)</h3>
-            <div v-if="isCalculatingFI" class="flex items-center gap-2">
-              <div class="w-3 h-3 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
-              <span class="text-[10px] text-emerald-500 font-bold uppercase">Scanning...</span>
-            </div>
+            <h3 class="text-xs font-bold text-emerald-500 uppercase tracking-widest">F-I Curve</h3>
+            <div v-if="isCalculatingFI" class="flex items-center gap-2"><div class="w-3 h-3 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin"></div><span class="text-[10px] text-emerald-500 font-bold uppercase">Scanning...</span></div>
           </div>
-          
           <div class="flex-1 flex gap-4">
              <div class="flex-1 h-32 relative bg-black/50 rounded border border-gray-800">
               <svg viewBox="0 0 300 120" preserveAspectRatio="none" class="w-full h-full">
-                <!-- 網格線 -->
-                <line x1="0" y1="60" x2="300" y2="60" stroke="#ffffff05" stroke-width="0.5" />
-                <line x1="150" y1="0" x2="150" y2="120" stroke="#ffffff05" stroke-width="0.5" />
-                
+                <line x1="0" y1="60" x2="300" y2="60" stroke="#ffffff05" stroke-width="0.5" /><line x1="150" y1="0" x2="150" y2="120" stroke="#ffffff05" stroke-width="0.5" />
                 <path :d="'M ' + getFIPath(fiCurveData)" fill="none" stroke="#10b981" stroke-width="2.5" />
               </svg>
-              <div class="absolute bottom-1 right-2 text-[8px] font-mono text-gray-500">I (pA/nS)</div>
-              <div class="absolute top-1 left-2 text-[8px] font-mono text-gray-500">f (Hz)</div>
             </div>
-            
             <div class="w-24 flex flex-col justify-center space-y-4" ref="analysisPanel">
               <div class="text-center p-2 bg-black/30 rounded border border-white/5">
                 <div class="text-[8px] text-gray-500 uppercase font-bold mb-1">$CV_{ISI}$</div>
                 <div class="text-lg font-mono text-blue-400">{{ cvISI.toFixed(3) }}</div>
-              </div>
-              <div class="text-[8px] text-gray-600 leading-tight italic">
-                $CV \approx 0$: Regular<br>
-                $CV \approx 1$: Poisson
               </div>
             </div>
           </div>
@@ -573,31 +513,8 @@ onMounted(() => {
 </template>
 
 <style scoped>
-input[type=range] {
-  appearance: none;
-  background: transparent;
-}
-
-input[type=range]::-webkit-slider-runnable-track {
-  width: 100%;
-  height: 4px;
-  background: #374151;
-  border-radius: 2px;
-}
-
-input[type=range]::-webkit-slider-thumb {
-  appearance: none;
-  width: 16px;
-  height: 16px;
-  background: white;
-  border-radius: 50%;
-  margin-top: -6px;
-  box-shadow: 0 0 10px rgba(0,0,0,0.5);
-  cursor: pointer;
-  transition: transform 0.1s;
-}
-
-input[type=range]:active::-webkit-slider-thumb {
-  transform: scale(1.2);
-}
+input[type=range] { appearance: none; background: transparent; }
+input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; background: #374151; border-radius: 2px; }
+input[type=range]::-webkit-slider-thumb { appearance: none; width: 16px; height: 16px; background: white; border-radius: 50%; margin-top: -6px; box-shadow: 0 0 10px rgba(0,0,0,0.5); cursor: pointer; transition: transform 0.1s; }
+input[type=range]:active::-webkit-slider-thumb { transform: scale(1.2); }
 </style>
