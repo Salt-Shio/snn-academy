@@ -1,9 +1,9 @@
-import type { ISynapse } from './ISynapse';
+import type { ISynapseDynamics } from '../interfaces/ISynapseDynamics';
 
 /**
  * 突觸抽象基礎類別，提供共通的權重與衰減管理。
  */
-export abstract class BaseSynapse implements ISynapse {
+export abstract class BaseSynapse implements ISynapseDynamics {
   protected signalStrength: number = 0;
   public weight: number;
   public tauSyn: number;
@@ -37,5 +37,5 @@ export abstract class BaseSynapse implements ISynapse {
     this.signalStrength = 0;
   }
 
-  public abstract step(dt: number, preSpike: boolean, postVoltage?: number): number;
+  public abstract step(dt: number, preSpike: boolean): number;
 }

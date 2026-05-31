@@ -54,6 +54,7 @@ export class STPSynapse extends BaseSynapse {
        * u+ = u- + U0 * (1 - u-)
        * g+ = g- + weight * u+ * R-
        * R+ = R- - u+ * R-
+       * 這裡 g 就是 signalStrength，代表當前的電導值 (強度)
        */
       this.u += this.U0 * (1 - this.u);
       
