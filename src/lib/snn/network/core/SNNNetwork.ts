@@ -1,5 +1,6 @@
 import type { INetworkNode } from './INetworkNode';
 import type { Connection } from './Connection';
+import type { ISynapsePhysics } from '../../synapses/interfaces/ISynapsePhysics';
 
 export type StepCallback = (time: number, network: SNNNetwork) => void;
 
@@ -47,8 +48,23 @@ export class SNNNetwork {
    */
   public reset(): void {
     this.nodes.forEach(node => node.reset());
-    this.connections.forEach(conn => conn.synapse.reset());
+    this.connections.forEach(conn => {
+      conn.transmission.reset();
+      // 注意：learningRule 可能與 transmission 共用同一個實體 (如 STDPSynapse)，所以可能已被 reset 過
+      // 這裡做個簡單判斷或重複 reset 亦可
+      if (conn.learningRule && (conn.learningRule as any) !== (conn.transmission as any)) {
+        (conn.learningRule as any).reset?.();
+      }
+    });
     this.nodes.forEach((_, id) => this.inputBuffer.set(id, 0));
+  }
+
+  /**
+   * 獲取指定連線的物理突觸實例。
+   */
+  public getSynapse(sourceId: string, targetId: string): ISynapsePhysics | undefined {
+    const conn = this.connections.find(c => c.sourceId === sourceId && c.targetId === targetId);
+    return conn?.transmission;
   }
 
   /**
@@ -63,37 +79,38 @@ export class SNNNetwork {
       this.inputBuffer.set(id, 0);
     });
 
-    // 2. 路由訊號 (Routing)
-    // 遍歷所有連線，將 Pre-spike 傳遞給突觸，並累加物理電流至 Target 的緩衝區
+    // 2. 正向路由 (Forward Routing: Physics & Dynamics)
     for (const conn of this.connections) {
       const source = this.nodes.get(conn.sourceId);
       const target = this.nodes.get(conn.targetId);
 
       if (!source || !target) continue;
 
-      // 取得 Source 上一步長是否發火
-      const preSpike = source.hasSpiked;
-      
-      // 取得 Target 當前電壓（供 COBA 計算驅動力）
-      const targetVoltage = target.getVoltage();
-
-      // 計算突觸輸出的等效電流 I_syn
-      const i_syn = conn.synapse.step(dt, preSpike, targetVoltage);
+      // 透過物理層取得轉換後的等效電流 I_syn
+      // 這裡物理層內部會呼叫動態層進行時間推進
+      const i_syn = conn.transmission.getEquivalentCurrent(dt, source.hasSpiked, target.getVoltage());
 
       // 將電流累加進 Target 的緩衝區
       const currentVal = this.inputBuffer.get(conn.targetId) || 0;
       this.inputBuffer.set(conn.targetId, currentVal + i_syn);
     }
 
-    // 3. 狀態更新 (Update)
-    // 遍歷所有節點，讓它們吃下累加好的 Buffer 與外部注入電流進行積分
+    // 3. 狀態更新 (Neuron Update / Integration)
     this.nodes.forEach((node, id) => {
       const synInput = this.inputBuffer.get(id) || 0;
       const extInput = extCurrents.get(id) || 0;
       node.step(dt, time, synInput, extInput);
     });
 
-    // 4. 廣播事件
+    // 4. 反向路由 (Backward Routing: Learning Rules)
+    for (const conn of this.connections) {
+      const target = this.nodes.get(conn.targetId);
+      if (target && target.hasSpiked && conn.learningRule) {
+        conn.learningRule.onPostSpike();
+      }
+    }
+
+    // 5. 廣播事件 (Monitoring)
     for (const listener of this.stepListeners) {
       listener(time, this);
     }

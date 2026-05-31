@@ -1,4 +1,4 @@
-import type { SNNNetwork } from './SNNNetwork';
+import type { SNNNetwork } from '../core/SNNNetwork';
 
 /**
  * 狀態監聽器。
