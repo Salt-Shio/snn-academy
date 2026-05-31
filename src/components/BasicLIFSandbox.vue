@@ -3,9 +3,12 @@ import { ref, onMounted, reactive, watch, nextTick } from 'vue';
 // 導入統一的 LIFNeuron
 import { LIFNeuron } from '../lib/snn/neurons/LIFNeuron';
 import { ALIFNeuron } from '../lib/snn/neurons/ALIFNeuron';
-import { PoissonSource } from '../lib/snn/PoissonSource';
 import { GWNSource } from '../lib/snn/GWNSource';
 import { calculateCV_ISI, generateFICurve } from '../lib/snn/metrics';
+import { SNNNetwork } from '../lib/snn/network/SNNNetwork';
+import { Connection } from '../lib/snn/network/Connection';
+import { SpikeGeneratorNode } from '../lib/snn/network/SpikeGeneratorNode';
+import { StateMonitor } from '../lib/snn/network/StateMonitor';
 import { StaticSynapse } from '../lib/snn/synapses/StaticSynapse';
 import { STPSynapse } from '../lib/snn/synapses/STPSynapse';
 import { CobaSynapse } from '../lib/snn/synapses/CobaSynapse';
@@ -23,31 +26,27 @@ const renderMath = () => {
     renderMathInElement(analysisPanel.value, {
       delimiters: [
         { left: '$$', right: '$$', display: true },
-        { left: '$', right: '$', display: false },
-      ],
-      throwOnError: false
+        { left: '$', right: '$', display: false }
+      ]
     });
   }
 };
 
-// --- 模型選擇 ---
+// --- 模型與輸入切換 ---
 type ModelType = 'cuba' | 'coba';
 const modelType = ref<ModelType>('cuba');
 
-// --- 模擬參數 ---
 const SIM_DURATION = 400; // ms
 const DT = 0.1;           // ms
 const STEPS = SIM_DURATION / DT;
 
-// --- 輸入模式 ---
 type InputMode = 'constant' | 'poisson';
 const inputMode = ref<InputMode>('constant');
 
-// --- 突觸模式 ---
 type SynapseType = 'static' | 'stp';
 const synapseType = ref<SynapseType>('static');
 
-// --- 共享參數 (Shared) ---
+// --- 共享參數 ---
 const constantInjection = ref(250);      // pA (外部注入電流)
 const poissonPulseStrength = ref(15);    // 共享數值 (CUBA: pA, COBA: nS)
 const poissonRate = ref(50);             // Hz
@@ -106,14 +105,20 @@ const fiCurveData = ref<{ current: number; freq: number }[]>([]);
 const isCalculatingFI = ref(false);
 
 const runSimulation = () => {
-  // 根據選擇的模型類型初始化
+  const network = new SNNNetwork();
   const params = modelType.value === 'cuba' ? cubaParams : cobaParams;
-  
-  const neuron = enableAdaptation.value
+
+  // 1. 建立 Source 節點 (脈衝產生器)
+  const sourceNode = new SpikeGeneratorNode(poissonRate.value);
+  network.addNode('source', sourceNode);
+
+  // 2. 建立 Target 神經元
+  const targetNeuron = enableAdaptation.value
     ? new ALIFNeuron({ ...params, ...alifParams } as any)
     : new LIFNeuron({ ...params } as any);
+  network.addNode('target', targetNeuron);
 
-  // 根據選擇的突觸類型初始化基礎突觸
+  // 3. 根據選擇的突觸類型初始化基礎突觸
   let baseSynapse: ISynapse;
   if (synapseType.value === 'static') {
     baseSynapse = new StaticSynapse(poissonPulseStrength.value, synapseParams.tau_syn);
@@ -127,56 +132,52 @@ const runSimulation = () => {
     );
   }
 
-  // 根據選擇的模型類型套用對應的物理轉換層 (Decorator)
-  const synapse = modelType.value === 'coba' 
+  // 套用物理轉換層裝飾器
+  const physicsSynapse = modelType.value === 'coba' 
     ? new CobaSynapse(baseSynapse, cobaParams.V_E)
     : new CubaSynapse(baseSynapse);
 
-  const pSource = new PoissonSource(poissonRate.value);
+  // 4. 建立並註冊連線
+  network.addConnection(new Connection('source', 'target', physicsSynapse));
   
-  const vHistory: number[] = [];
-  const iHistory: number[] = [];
-  const nSpikes: number[] = [];
-  const pSpikes: number[] = [];
+  // 5. 建立監聽器 (Listener)
+  const targetMonitor = new StateMonitor(network, 'target');
+  const sourceMonitor = new StateMonitor(network, 'source');
 
   for (let i = 0; i < STEPS; i++) {
     const time = i * DT;
-    let syn_in = 0;
     
-    // 1. 檢查脈衝源 (僅在泊松模式)
-    const hasPreSpike = (inputMode.value === 'poisson') && pSource.step(DT);
-    if (hasPreSpike) pSpikes.push(time);
-
-    // 2. 突觸處理 (獲取連續的等效注入電流 pA)
-    // 傳入 postVoltage 讓 COBA 模式可以計算驅動力
-    syn_in = synapse.step(DT, hasPreSpike, neuron.v);
-
-    // 3. 計算外部注入電流 (ext_current): Constant Injection + GWN
+    // 外部電流 Mapping
     const iBase = (time >= 100 && time <= 300) ? constantInjection.value : 0;
     const g_L_val = modelType.value === 'cuba' ? cubaParams.g_L : cobaParams.g_L;
     const c_m_val = modelType.value === 'cuba' ? cubaParams.C_m : cobaParams.C_m;
     const tau_m = c_m_val / (typeof g_L_val === 'number' ? g_L_val : 10);
-    
     const iNoise = GWNSource.getNoiseCurrent(noiseSigma.value, tau_m, typeof g_L_val === 'number' ? g_L_val : 10, DT);
     const ext_i = iBase + iNoise;
 
-    // 4. 推進神經元
-    const spiked = neuron.step(DT, time, syn_in, ext_i);
-    vHistory.push(neuron.v);
-    
-    // 視覺化電流 (Effective Total Current, 單位 pA)
-    // CUBA 與 COBA 的 syn_in 現在皆已是由突觸層計算好的電流
-    let visualCurrent = ext_i + syn_in;
-    iHistory.push(visualCurrent);
+    const extMap = new Map<string, number>();
+    if (inputMode.value === 'constant') {
+      extMap.set('target', ext_i);
+    } else {
+      extMap.set('target', iNoise); 
+    }
 
-    if (spiked) nSpikes.push(time);
+    if (inputMode.value !== 'poisson') {
+       sourceNode.setRate(0);
+    }
+
+    // 6. 推進網路 (Monitor 會在 step 內部被自動觸發)
+    network.step(DT, time, extMap);
   }
 
-  voltageHistory.value = vHistory;
-  currentHistory.value = iHistory;
-  neuronSpikeTimes.value = nSpikes;
-  poissonSpikeTimes.value = pSpikes;
-  cvISI.value = calculateCV_ISI(nSpikes);
+  // 7. 更新響應式數據 (從監聽器抄出來)
+  voltageHistory.value = targetMonitor.vHistory;
+  currentHistory.value = targetMonitor.iHistory;
+  neuronSpikeTimes.value = targetMonitor.spikeTimes;
+  // 僅在 Poisson 模式下顯示前級脈衝
+  poissonSpikeTimes.value = inputMode.value === 'poisson' ? sourceMonitor.spikeTimes : [];
+
+  cvISI.value = calculateCV_ISI(targetMonitor.spikeTimes);
 };
 
 // SVG 繪圖輔助
@@ -252,23 +253,27 @@ onMounted(() => {
   <div class="p-6 max-w-5xl mx-auto space-y-6">
     <!-- 頂部模型切換 -->
     <div class="flex flex-col items-center gap-4">
-      <h1 class="text-3xl font-black text-white bg-indigo-600 inline-block px-4 py-1 rounded-sm">
-        SNN 多模型沙盒：CUBA vs COBA
-      </h1>
-      <div class="flex p-1 bg-gray-800 rounded-xl gap-1 w-full max-w-md shadow-2xl">
-        <button @click="modelType = 'cuba'" 
-          :class="['flex-1 py-3 rounded-lg font-black transition-all text-sm tracking-widest', modelType === 'cuba' ? 'bg-indigo-600 text-white shadow-lg ring-2 ring-indigo-400' : 'text-gray-500 hover:bg-gray-700']">
-          基礎模式 (CUBA)
+      <div class="flex p-1 bg-gray-800 rounded-xl border border-gray-700 shadow-lg">
+        <button 
+          @click="modelType = 'cuba'" 
+          :class="['px-8 py-3 rounded-lg font-bold transition-all duration-300 flex items-center gap-2', modelType === 'cuba' ? 'bg-indigo-600 text-white shadow-indigo-500/50 shadow-lg' : 'text-gray-400 hover:text-gray-200']"
+        >
+          <span class="w-2 h-2 rounded-full bg-white animate-pulse" v-if="modelType === 'cuba'"></span>
+          CUBA Model
         </button>
-        <button @click="modelType = 'coba'" 
-          :class="['flex-1 py-3 rounded-lg font-black transition-all text-sm tracking-widest', modelType === 'coba' ? 'bg-emerald-600 text-white shadow-lg ring-2 ring-emerald-400' : 'text-gray-500 hover:bg-gray-700']">
-          進階模式 (COBA)
+        <button 
+          @click="modelType = 'coba'" 
+          :class="['px-8 py-3 rounded-lg font-bold transition-all duration-300 flex items-center gap-2', modelType === 'coba' ? 'bg-emerald-600 text-white shadow-emerald-500/50 shadow-lg' : 'text-gray-400 hover:text-gray-200']"
+        >
+          <span class="w-2 h-2 rounded-full bg-white animate-pulse" v-if="modelType === 'coba'"></span>
+          COBA Model
         </button>
       </div>
+      <p class="text-xs text-gray-500 font-mono tracking-tighter">Current-based vs Conductance-based Integration</p>
     </div>
 
-    <!-- 控制面板組 -->
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <!-- 參數設定面板 -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <!-- 共享輸入設定 -->
       <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-xl space-y-6">
         <div class="flex items-center gap-2">
@@ -369,7 +374,6 @@ onMounted(() => {
             </div>
           </div>
         </div>
-        
         <p class="text-[10px] text-gray-500 leading-tight italic">
             {{ synapseType === 'static' ? '靜態模式：突觸強度固定。' : 'STP 模式：模擬資源耗盡(STD)與鈣累積(STF)效應。' }}
         </p>
@@ -511,83 +515,57 @@ onMounted(() => {
               <line x1="0" y1="50" x2="800" y2="50" stroke="#1a202c" stroke-width="0.5" />
               <line x1="0" y1="100" x2="800" y2="100" stroke="#1a202c" stroke-width="0.5" />
               <line x1="0" y1="150" x2="800" y2="150" stroke="#1a202c" stroke-width="0.5" />
-              <line x1="0" :y1="200 - (( (modelType === 'cuba' ? cubaParams.V_th : cobaParams.V_th) + 85) / 90) * 200" x2="800" :y2="200 - (( (modelType === 'cuba' ? cubaParams.V_th : cobaParams.V_th) + 85) / 90) * 200" stroke="#f87171" stroke-dasharray="4,2" />
               <path :d="'M ' + getVoltagePath(voltageHistory)" fill="none" stroke="#3b82f6" stroke-width="2" />
-              <g v-for="t in neuronSpikeTimes" :key="t">
-                <circle :cx="(t / SIM_DURATION) * 800" :cy="200 - (( (modelType === 'cuba' ? cubaParams.V_th : cobaParams.V_th) + 85) / 90) * 200" r="3" fill="#ef4444" />
-              </g>
             </svg>
           </div>
         </div>
       </div>
 
-      <div class="bg-gray-900 p-4 rounded-lg border border-gray-800 shadow-inner">
-        <h3 class="text-xs font-bold text-yellow-500 uppercase mb-2 tracking-widest">Effective Current (pA)</h3>
-        <div class="h-16 relative bg-black rounded overflow-hidden flex">
-          <div class="flex flex-col justify-between text-[8px] font-mono text-gray-600 mr-2 py-1">
-            <span>{{ currentHistory.reduce((max, val) => Math.max(max, val), 1000).toFixed(0) }}</span><span>0</span>
-          </div>
-          <div class="flex-1 relative">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <!-- Effective Total Current -->
+        <div class="bg-gray-900 p-4 rounded-lg border border-gray-800">
+          <h3 class="text-xs font-bold text-yellow-500 uppercase mb-2 tracking-widest">Effective Total Current (pA)</h3>
+          <div class="h-20 relative bg-black rounded">
             <svg viewBox="0 0 800 60" preserveAspectRatio="none" class="w-full h-full">
               <path :d="'M ' + getCurrentPath(currentHistory)" fill="none" stroke="#eab308" stroke-width="1.5" opacity="0.8" />
             </svg>
           </div>
         </div>
-      </div>
-    </div>
 
-    <!-- 數據分析與 F-I -->
-    <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
-        <div class="bg-gray-800 p-3 rounded border border-gray-700 text-center">
-            <div class="text-[10px] text-gray-500 uppercase font-bold">Model</div>
-            <div class="text-xl font-mono text-white uppercase">{{ modelType }}</div>
-        </div>
-        <div class="bg-gray-800 p-3 rounded border border-gray-700 text-center">
-            <div class="text-[10px] text-gray-500 uppercase font-bold">Output Rate</div>
-            <div class="text-xl font-mono text-blue-400">{{ ((neuronSpikeTimes.length / SIM_DURATION) * 1000).toFixed(1) }} Hz</div>
-        </div>
-        <div class="bg-gray-800 p-3 rounded border border-gray-700 text-center border-l-2 border-l-pink-500">
-            <div class="text-[10px] text-pink-500 uppercase font-bold">CV_ISI</div>
-            <div class="text-xl font-mono text-pink-400">{{ cvISI.toFixed(3) }}</div>
-        </div>
-    </div>
-
-    <div ref="analysisPanel" class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-xl">
-      <div class="flex items-center justify-between mb-6">
-        <div class="flex items-center gap-2">
-          <div class="w-2 h-6 bg-emerald-500 rounded-full"></div>
-          <h2 class="text-xl font-bold text-white">特性分析 (F-I Curve)</h2>
-        </div>
-        <div v-if="isCalculatingFI" class="flex items-center gap-2 text-xs text-gray-500 italic">
-          <div class="w-3 h-3 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
-          計算中...
-        </div>
-      </div>
-
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
-        <div class="md:col-span-2 bg-black p-4 rounded-lg border border-gray-900 relative flex">
-          <div class="flex flex-col justify-between text-[8px] font-mono text-gray-600 mr-2 py-4">
-            <span>{{ fiCurveData.reduce((max, d) => Math.max(max, d.freq), 100).toFixed(0) }}</span><span>0</span>
+        <!-- F-I Curve -->
+        <div class="bg-gray-900 p-6 rounded-lg border border-gray-800 shadow-xl flex flex-col">
+          <div class="flex justify-between items-center mb-4">
+            <h3 class="text-xs font-bold text-emerald-500 uppercase tracking-widest">F-I Curve (Response)</h3>
+            <div v-if="isCalculatingFI" class="flex items-center gap-2">
+              <div class="w-3 h-3 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+              <span class="text-[10px] text-emerald-500 font-bold uppercase">Scanning...</span>
+            </div>
           </div>
-          <div class="flex-1">
-            <h3 class="text-[10px] font-bold text-gray-500 uppercase mb-4 tracking-widest text-center">Frequency (Hz) vs Intensity</h3>
-            <div class="h-40 relative px-2">
+          
+          <div class="flex-1 flex gap-4">
+             <div class="flex-1 h-32 relative bg-black/50 rounded border border-gray-800">
               <svg viewBox="0 0 300 120" preserveAspectRatio="none" class="w-full h-full">
+                <!-- 網格線 -->
+                <line x1="0" y1="60" x2="300" y2="60" stroke="#ffffff05" stroke-width="0.5" />
+                <line x1="150" y1="0" x2="150" y2="120" stroke="#ffffff05" stroke-width="0.5" />
+                
                 <path :d="'M ' + getFIPath(fiCurveData)" fill="none" stroke="#10b981" stroke-width="2.5" />
               </svg>
-              <div class="flex justify-between mt-2 text-[8px] font-mono text-gray-600 uppercase">
-                <span>0</span><span>{{ modelType === 'cuba' ? '400' : '25' }}</span><span>{{ modelType === 'cuba' ? '800' : '50' }}</span>
+              <div class="absolute bottom-1 right-2 text-[8px] font-mono text-gray-500">I (pA/nS)</div>
+              <div class="absolute top-1 left-2 text-[8px] font-mono text-gray-500">f (Hz)</div>
+            </div>
+            
+            <div class="w-24 flex flex-col justify-center space-y-4" ref="analysisPanel">
+              <div class="text-center p-2 bg-black/30 rounded border border-white/5">
+                <div class="text-[8px] text-gray-500 uppercase font-bold mb-1">$CV_{ISI}$</div>
+                <div class="text-lg font-mono text-blue-400">{{ cvISI.toFixed(3) }}</div>
+              </div>
+              <div class="text-[8px] text-gray-600 leading-tight italic">
+                $CV \approx 0$: Regular<br>
+                $CV \approx 1$: Poisson
               </div>
             </div>
           </div>
-        </div>
-        <div class="flex flex-col justify-center space-y-4">
-            <div class="bg-gray-900 p-4 rounded border border-gray-800">
-                <h4 class="text-[10px] font-bold text-emerald-500 uppercase mb-1">模式差異說明</h4>
-                <p class="text-[11px] text-gray-400 leading-relaxed">
-                    在 **COBA** 下，突觸強度是電導。隨著 $V$ 接近 $V_E$，驅動力會逐漸飽和，這是與 **CUBA** 最大的物理差異。
-                </p>
-            </div>
         </div>
       </div>
     </div>
@@ -595,5 +573,31 @@ onMounted(() => {
 </template>
 
 <style scoped>
-path { transition: d 0.1s ease-out; }
+input[type=range] {
+  appearance: none;
+  background: transparent;
+}
+
+input[type=range]::-webkit-slider-runnable-track {
+  width: 100%;
+  height: 4px;
+  background: #374151;
+  border-radius: 2px;
+}
+
+input[type=range]::-webkit-slider-thumb {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  background: white;
+  border-radius: 50%;
+  margin-top: -6px;
+  box-shadow: 0 0 10px rgba(0,0,0,0.5);
+  cursor: pointer;
+  transition: transform 0.1s;
+}
+
+input[type=range]:active::-webkit-slider-thumb {
+  transform: scale(1.2);
+}
 </style>

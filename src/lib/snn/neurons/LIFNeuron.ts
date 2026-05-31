@@ -1,3 +1,5 @@
+import type { INetworkNode } from '../network/INetworkNode';
+
 export type ConductanceProvider = number | ((t: number, v: number) => number);
 
 export interface LIFParams {
@@ -14,12 +16,13 @@ export interface LIFParams {
  * 負責純粹的電位積分與脈衝發射邏輯。
  * 突觸層已經過抽象化，傳入的 syn_input 皆為等效輸入電流 (pA)。
  */
-export class LIFNeuron {
+export class LIFNeuron implements INetworkNode {
   public v: number;
   public hasSpiked: boolean = false;
   public params: LIFParams;
   
   protected tref_counter: number = 0;
+  protected current_i: number = 0; // 當前步長的總輸入電流 (pA)
 
   constructor(params: LIFParams) {
     this.params = params;
@@ -34,6 +37,20 @@ export class LIFNeuron {
     this.v = this.params.V_L;
     this.hasSpiked = false;
     this.tref_counter = 0;
+  }
+
+  /**
+   * 符合 INetworkNode 介面規範
+   */
+  public getVoltage(): number {
+    return this.v;
+  }
+
+  /**
+   * 符合 INetworkNode 介面規範
+   */
+  public getTotalCurrent(): number {
+    return this.current_i;
   }
 
   /**
@@ -57,6 +74,7 @@ export class LIFNeuron {
       return true;
     }
 
+    this.current_i = syn_input + ext_current; // 記錄總推力
     const current_gL = this.resolveG(this.params.g_L, t, this.v);
 
     const i_leak = -current_gL * (this.v - this.params.V_L);

@@ -16,6 +16,12 @@ export interface INetworkNode {
   getVoltage(): number;
 
   /**
+   * 取得節點在最後一次步長中所承受的總物理電流 (pA)。
+   * 包含突觸輸入與外部注入。用於視覺化監聽。
+   */
+  getTotalCurrent(): number;
+
+  /**
    * 推進一個時間步長。
    * @param dt 時間步長 (ms)
    * @param time 當前模擬時間 (ms)

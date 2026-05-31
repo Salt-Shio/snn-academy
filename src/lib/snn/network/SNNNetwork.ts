@@ -1,6 +1,8 @@
 import type { INetworkNode } from './INetworkNode';
 import type { Connection } from './Connection';
 
+export type StepCallback = (time: number, network: SNNNetwork) => void;
+
 /**
  * 神經網路管理器。
  * 負責協調所有節點與連線的生命週期，執行全局的時間推進與訊號路由。
@@ -9,6 +11,7 @@ export class SNNNetwork {
   private nodes: Map<string, INetworkNode> = new Map();
   private connections: Connection[] = [];
   private inputBuffer: Map<string, number> = new Map();
+  private stepListeners: StepCallback[] = [];
 
   /**
    * 註冊一個節點到網路中。
@@ -16,6 +19,13 @@ export class SNNNetwork {
   public addNode(id: string, node: INetworkNode): void {
     this.nodes.set(id, node);
     this.inputBuffer.set(id, 0);
+  }
+
+  /**
+   * 註冊步長監聽器。
+   */
+  public addStepListener(callback: StepCallback): void {
+    this.stepListeners.push(callback);
   }
 
   /**
@@ -82,6 +92,11 @@ export class SNNNetwork {
       const extInput = extCurrents.get(id) || 0;
       node.step(dt, time, synInput, extInput);
     });
+
+    // 4. 廣播事件
+    for (const listener of this.stepListeners) {
+      listener(time, this);
+    }
   }
 
   /**

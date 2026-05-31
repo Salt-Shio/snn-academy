@@ -25,6 +25,13 @@ export class SpikeGeneratorNode implements INetworkNode {
   }
 
   /**
+   * 脈衝產生器無實體電流，回傳 0。
+   */
+  public getTotalCurrent(): number {
+    return 0;
+  }
+
+  /**
    * 推進一個時間步長。
    */
   public step(dt: number, _time: number, _syn_input: number, _ext_current: number): boolean {
