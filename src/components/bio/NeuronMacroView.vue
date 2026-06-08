@@ -36,17 +36,33 @@ const initData = () => {
   const n: NeuronNode[] = [];
   const l: NeuronLink[] = [];
 
-  // 1. Soma (不再硬性固定，改用較強的引力)
+  // 1. Soma
   const soma: NeuronNode = { id: 'soma', depth: 0, side: 'core', type: 'soma', x: 250, y: 300 };
   somaNode.value = soma;
   n.push(soma);
 
-  // 2. 遞迴生成左側樹突
+  // 2. 遞迴生成左側樹突 (限制在 100° 到 260° 之間)
   const growLeft = (p: NeuronNode, d: number) => {
     if (d >= 4) return;
     const count = d === 0 ? 6 : (Math.random() > 0.4 ? 2 : 1);
     for (let i = 0; i < count; i++) {
-      const c: NeuronNode = { id: `L-${p.id}-${d}-${i}`, depth: d + 1, side: 'left', type: 'dendrite', x: p.x - 20, y: p.y };
+      let angle;
+      if (d === 0) {
+        // 分佈在 100 到 260 度之間，完全避開右側 (0度) 的軸突區域
+        angle = (100 + (160 / (count - 1)) * i) * (Math.PI / 180);
+      } else {
+        // 後續分支保持向左趨勢
+        angle = Math.PI + (Math.random() - 0.5) * 2;
+      }
+      const dist = 30 + Math.random() * 20;
+      const c: NeuronNode = { 
+        id: `L-${p.id}-${d}-${i}`, 
+        depth: d + 1, 
+        side: 'left', 
+        type: 'dendrite', 
+        x: p.x + Math.cos(angle) * dist, 
+        y: p.y + Math.sin(angle) * dist 
+      };
       n.push(c);
       l.push({ source: p.id, target: c.id, width: 14 * Math.pow(0.52, d) });
       growLeft(c, d + 1);
@@ -64,7 +80,16 @@ const initData = () => {
     if (d >= 2) return;
     const count = d === 0 ? 4 : 2; 
     for (let i = 0; i < count; i++) {
-      const c: NeuronNode = { id: `R-${p.id}-${d}-${i}`, depth: d + 1, side: 'right', type: 'terminal', x: p.x + 20, y: p.y };
+      const angle = (Math.random() - 0.5) * 1.5; // 向右生長 (-45 到 45 度)
+      const dist = 25;
+      const c: NeuronNode = { 
+        id: `R-${p.id}-${d}-${i}`, 
+        depth: d + 1, 
+        side: 'right', 
+        type: 'terminal', 
+        x: p.x + Math.cos(angle) * dist, 
+        y: p.y + Math.sin(angle) * dist 
+      };
       n.push(c);
       l.push({ source: p.id, target: c.id, width: 6 * Math.pow(0.7, d) });
       growRight(c, d + 1);
@@ -128,11 +153,14 @@ const startSim = () => {
 
   simulation = d3.forceSimulation<NeuronNode>(nodes.value)
     .force("link", d3.forceLink<NeuronNode, NeuronLink>(links.value).id(d => d.id).distance(45).strength(1))
-    .force("charge", d3.forceManyBody().strength(-100))
-    .force("x", d3.forceX<NeuronNode>(d => d.id === 'soma' ? 250 : (d.id === 't-root' ? 900 : d.x!)).strength(0.08))
-    .force("y", d3.forceY<NeuronNode>(d => d.id === 'soma' ? 300 : (d.id === 't-root' ? 380 : d.y!)).strength(0.08))
-    .force("radialLeft", d3.forceRadial(250, 250, 300).strength(d => d.side === 'left' ? 0.2 : 0))
-    .force("radialRight", d3.forceRadial(150, 900, 380).strength(d => d.side === 'right' ? 0.4 : 0))
+    .force("charge", d3.forceManyBody().strength(d => d.type === 'soma' ? -500 : -120))
+    .force("x", d3.forceX<NeuronNode>(d => {
+      if (d.id === 'soma') return 250;
+      if (d.id === 't-root') return 900;
+      return d.side === 'left' ? 120 : 1000;
+    }).strength(d => (d.id === 'soma' || d.id === 't-root') ? 0.2 : 0.05))
+    .force("y", d3.forceY<NeuronNode>(d => d.id === 'soma' ? 300 : (d.id === 't-root' ? 380 : d.y!)).strength(0.1))
+    .force("radialLeft", d3.forceRadial(200, 250, 300).strength(d => d.side === 'left' ? 0.3 : 0))
     .alphaDecay(0.01);
 
   simulation.on("tick", () => {
@@ -147,15 +175,16 @@ const startSim = () => {
       .call(d);
   }
 };
+
 const updateMyelin = () => {
   if (!axonPathRef.value) return;
   try {
     const path = axonPathRef.value;
     const len = path.getTotalLength();
     const pts = [];
-    const count = 11; // 稍微減少一個，讓間距更自然
-    const startOffset = len * 0.18; // 增加起始偏移，留出「軸丘 (Axon Hillock)」空間
-    const endOffset = len * 0.92;   // 保持尾部覆蓋
+    const count = 11;
+    const startOffset = len * 0.18; 
+    const endOffset = len * 0.92;   
     const usableLen = endOffset - startOffset;
     const step = usableLen / (count - 1);
 
@@ -165,12 +194,13 @@ const updateMyelin = () => {
       const p2 = path.getPointAtLength(Math.min(d + 2, len));
       const ang = Math.atan2(p2.y - p1.y, p2.x - p1.x) * (180 / Math.PI);
 
-      const segmentWidth = step * 0.85; // 稍微增加一點間隙感
+      const segmentWidth = step * 0.85; 
       pts.push({ x: p1.x, y: p1.y, angle: ang, width: segmentWidth });
     }
     myelinPoints.value = pts;
   } catch(e) {}
 };
+
 const getLinkD = (link: NeuronLink) => {
   const s = link.source;
   const t = link.target;
