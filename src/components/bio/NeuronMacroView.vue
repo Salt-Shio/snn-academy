@@ -1,224 +1,87 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, shallowRef, computed, watch, nextTick } from 'vue';
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
 import * as d3 from 'd3';
 
-// --- 狀態與引用 ---
+// 導入模型
+import type { NeuronNode } from './models/network-models';
+
+// 導入領域邏輯 (Physics & Geometry)
+import { useNetworkPhysics } from './physics/useNetworkPhysics';
+import { useAxonGeometry } from './geometry/useAxonGeometry';
+
+// 導入視覺圖層 (Layers)
+import SomaLayer from './layers/SomaLayer.vue';
+import TerminalRootLayer from './layers/TerminalRootLayer.vue';
+import DendriteLayer from './layers/DendriteLayer.vue';
+import AxonLayer from './layers/AxonLayer.vue';
+
+// --- 1. 核心狀態與邏輯初始化 ---
 const showLabels = ref(true);
 const isFiring = ref(false);
-const axonPathRef = ref<SVGPathElement | null>(null);
 const svgRef = ref<SVGSVGElement | null>(null);
-const myelinPoints = ref<{ x: number, y: number, angle: number, width: number }[]>([]);
+const axonLayerRef = ref<any>(null);
 
-const somaNode = ref<NeuronNode | null>(null);
-const terminalRootNode = ref<NeuronNode | null>(null);
+const { 
+  nodes, 
+  links, 
+  somaNode, 
+  terminalRootNode, 
+  tickCount, 
+  simulation, 
+  initNeuronData, 
+  startSimulation, 
+  dragBehavior 
+} = useNetworkPhysics();
 
-// --- D3 物理模擬資料結構 ---
-interface NeuronNode extends d3.SimulationNodeDatum {
-  id: string;
-  depth: number;
-  side: 'left' | 'right' | 'core';
-  type: 'soma' | 'dendrite' | 'terminal';
-}
+const { 
+  axonPathRef, 
+  myelinPoints, 
+  axonD, 
+  updateMyelin 
+} = useAxonGeometry(somaNode, terminalRootNode, tickCount);
 
-interface NeuronLink extends d3.SimulationLinkDatum<NeuronNode> {
-  source: any;
-  target: any;
-  width: number;
-}
-
-const nodes = shallowRef<NeuronNode[]>([]);
-const links = shallowRef<NeuronLink[]>([]);
-const tickCount = ref(0);
-let simulation: d3.Simulation<NeuronNode, NeuronLink> | null = null;
-
-// --- 初始化資料 ---
-const initData = () => {
-  const n: NeuronNode[] = [];
-  const l: NeuronLink[] = [];
-
-  // 1. Soma
-  const soma: NeuronNode = { id: 'soma', depth: 0, side: 'core', type: 'soma', x: 250, y: 300 };
-  somaNode.value = soma;
-  n.push(soma);
-
-  // 2. 遞迴生成左側樹突 (限制在 100° 到 260° 之間)
-  const growLeft = (p: NeuronNode, d: number) => {
-    if (d >= 4) return;
-    const count = d === 0 ? 6 : (Math.random() > 0.4 ? 2 : 1);
-    for (let i = 0; i < count; i++) {
-      let angle;
-      if (d === 0) {
-        // 分佈在 100 到 260 度之間，完全避開右側 (0度) 的軸突區域
-        angle = (100 + (160 / (count - 1)) * i) * (Math.PI / 180);
-      } else {
-        // 後續分支保持向左趨勢
-        angle = Math.PI + (Math.random() - 0.5) * 2;
-      }
-      const dist = 30 + Math.random() * 20;
-      const c: NeuronNode = { 
-        id: `L-${p.id}-${d}-${i}`, 
-        depth: d + 1, 
-        side: 'left', 
-        type: 'dendrite', 
-        x: p.x + Math.cos(angle) * dist, 
-        y: p.y + Math.sin(angle) * dist 
-      };
-      n.push(c);
-      l.push({ source: p.id, target: c.id, width: 14 * Math.pow(0.52, d) });
-      growLeft(c, d + 1);
-    }
-  };
-  growLeft(soma, 0);
-
-  // 3. 軸突末端根部
-  const terminalRoot: NeuronNode = { id: 't-root', depth: 0, side: 'core', type: 'terminal', x: 900, y: 380 };
-  terminalRootNode.value = terminalRoot;
-  n.push(terminalRoot);
-
-  // 4. 遞迴生成右側末梢
-  const growRight = (p: NeuronNode, d: number) => {
-    if (d >= 2) return;
-    const count = d === 0 ? 4 : 2; 
-    for (let i = 0; i < count; i++) {
-      const angle = (Math.random() - 0.5) * 1.5; // 向右生長 (-45 到 45 度)
-      const dist = 25;
-      const c: NeuronNode = { 
-        id: `R-${p.id}-${d}-${i}`, 
-        depth: d + 1, 
-        side: 'right', 
-        type: 'terminal', 
-        x: p.x + Math.cos(angle) * dist, 
-        y: p.y + Math.sin(angle) * dist 
-      };
-      n.push(c);
-      l.push({ source: p.id, target: c.id, width: 6 * Math.pow(0.7, d) });
-      growRight(c, d + 1);
-    }
-  };
-  growRight(terminalRoot, 0);
-
-  nodes.value = n;
-  links.value = l;
-};
-
-// --- 計算屬性：動態軸突路徑 ---
-const axonD = computed(() => {
-  const _ = tickCount.value;
-  const s = somaNode.value;
-  const t = terminalRootNode.value;
-  if (!s || !t || s.x === undefined || t.x === undefined) return "";
-
-  const dx = t.x - s.x;
-  const dy = t.y - s.y;
-
-  const cp1x = s.x + dx * 0.307;
-  const cp1y = s.y + dy * 0.25;
-  const cp2x = s.x + dx * 0.615;
-  const cp2y = s.y + dy * 2.25;
-
-  return `M ${s.x} ${s.y} C ${cp1x} ${cp1y} ${cp2x} ${cp2y} ${t.x} ${t.y}`;
+// 同步子組件中的 SVG Path 引用到幾何運算邏輯中
+watch(() => axonLayerRef.value?.pathRef, (el) => {
+  if (el) axonPathRef.value = el;
 });
 
-// --- 計算屬性：精確找出右側末梢的葉子節點 ---
+// --- 2. 計算屬性 ---
+// 精確找出右側末梢的葉子節點
 const terminalLeafIds = computed(() => {
   const _ = tickCount.value;
-  const sources = new Set(links.value.map(l => (typeof l.source === 'string' ? l.source : l.source.id)));
+  const sources = new Set(links.value.map(l => (typeof l.source === 'string' ? l.source : (l.source as any).id)));
   return nodes.value
-    .filter(n => n.type === 'terminal' && n.id !== 't-root' && !sources.has(n.id))
+    .filter(n => n.type === 'terminal' && !n.id.startsWith('t-root') && !sources.has(n.id))
     .map(n => n.id);
 });
 
-// --- 拖拽行為 ---
-const dragBehavior = (sim: d3.Simulation<NeuronNode, NeuronLink>) => {
-  return d3.drag<any, NeuronNode>()
-    .on("start", (event) => {
-      if (!event.active) sim.alphaTarget(0.3).restart();
-      event.subject.fx = event.subject.x;
-      event.subject.fy = event.subject.y;
-    })
-    .on("drag", (event) => {
-      event.subject.fx = event.x;
-      event.subject.fy = event.y;
-    })
-    .on("end", (event) => {
-      if (!event.active) sim.alphaTarget(0);
-      event.subject.fx = null;
-      event.subject.fy = null;
-    });
-};
-
-// --- 啟動模擬 ---
-const startSim = () => {
-  if (simulation) simulation.stop();
-
-  simulation = d3.forceSimulation<NeuronNode>(nodes.value)
-    .force("link", d3.forceLink<NeuronNode, NeuronLink>(links.value).id(d => d.id).distance(45).strength(1))
-    .force("charge", d3.forceManyBody().strength(d => d.type === 'soma' ? -500 : -120))
-    .force("x", d3.forceX<NeuronNode>(d => {
-      if (d.id === 'soma') return 250;
-      if (d.id === 't-root') return 900;
-      return d.side === 'left' ? 120 : 1000;
-    }).strength(d => (d.id === 'soma' || d.id === 't-root') ? 0.2 : 0.05))
-    .force("y", d3.forceY<NeuronNode>(d => d.id === 'soma' ? 300 : (d.id === 't-root' ? 380 : d.y!)).strength(0.1))
-    .force("radialLeft", d3.forceRadial(200, 250, 300).strength(d => d.side === 'left' ? 0.3 : 0))
-    .alphaDecay(0.01);
-
-  simulation.on("tick", () => {
-    tickCount.value++;
-    updateMyelin(); 
-  });
-
-  if (svgRef.value) {
-    const d = dragBehavior(simulation);
-    d3.select(svgRef.value).selectAll<SVGElement, NeuronNode>(".draggable")
-      .data(nodes.value.filter(n => n.id === 'soma' || n.id === 't-root'), d => d.id)
-      .call(d);
-  }
-};
-
-const updateMyelin = () => {
-  if (!axonPathRef.value) return;
-  try {
-    const path = axonPathRef.value;
-    const len = path.getTotalLength();
-    const pts = [];
-    const count = 11;
-    const startOffset = len * 0.18; 
-    const endOffset = len * 0.92;   
-    const usableLen = endOffset - startOffset;
-    const step = usableLen / (count - 1);
-
-    for (let i = 0; i < count; i++) {
-      const d = startOffset + (i * step);
-      const p1 = path.getPointAtLength(d);
-      const p2 = path.getPointAtLength(Math.min(d + 2, len));
-      const ang = Math.atan2(p2.y - p1.y, p2.x - p1.x) * (180 / Math.PI);
-
-      const segmentWidth = step * 0.85; 
-      pts.push({ x: p1.x, y: p1.y, angle: ang, width: segmentWidth });
-    }
-    myelinPoints.value = pts;
-  } catch(e) {}
-};
-
-const getLinkD = (link: NeuronLink) => {
-  const s = link.source;
-  const t = link.target;
-  if (s.x === undefined || t.x === undefined) return "";
-  const mx = (s.x + t.x) / 2 + (Math.sin(s.id.length + tickCount.value * 0.05) * 2);
-  const my = (s.y + t.y) / 2 + (Math.cos(s.id.length + tickCount.value * 0.05) * 2);
-  return `M ${s.x} ${s.y} Q ${mx} ${my} ${t.x} ${t.y}`;
-};
-
+// --- 3. 動作互動 ---
 const triggerSpike = () => {
   if (isFiring.value) return;
   isFiring.value = true;
-  setTimeout(() => isFiring.value = false, 1500);
+  setTimeout(() => isFiring.value = false, 1200);
 };
 
+// --- 4. 生命週期 ---
 onMounted(() => {
-  initData();
-  setTimeout(() => startSim(), 100);
+  // 初始化單一神經元資料 (ID 為 'n1')
+  initNeuronData('n1');
+
+  // 延遲啟動模擬以確保 DOM 已掛載
+  setTimeout(() => {
+    startSimulation(() => {
+      // 每一幀更新時執行的額外邏輯
+      updateMyelin();
+    });
+
+    // 綁定拖拽行為
+    if (svgRef.value && simulation) {
+      const d = dragBehavior(simulation);
+      d3.select(svgRef.value).selectAll<SVGElement, NeuronNode>(".draggable")
+        .data(nodes.value.filter(n => n.type === 'soma' || n.id.startsWith('t-root')), d => d.id)
+        .call(d);
+    }
+  }, 100);
 });
 
 onUnmounted(() => {
@@ -228,6 +91,7 @@ onUnmounted(() => {
 
 <template>
   <div class="neuron-viewport w-full h-[85vh] bg-[#020617] flex items-center justify-center overflow-hidden font-sans">
+    <!-- UI 控制區 -->
     <div class="absolute top-28 right-12 flex gap-4 z-50">
       <button @click="showLabels = !showLabels" class="px-6 py-2 rounded-full border border-white/10 bg-white/5 text-white/30 text-[10px] font-black tracking-widest hover:text-white transition-all uppercase">
         {{ showLabels ? 'Hide Labels' : 'Show Labels' }}
@@ -237,6 +101,7 @@ onUnmounted(() => {
       </button>
     </div>
 
+    <!-- SVG 畫布 -->
     <div class="w-[1150px] h-[650px] relative">
       <svg ref="svgRef" viewBox="0 0 1150 650" class="w-full h-full drop-shadow-2xl !pointer-events-auto">
         <defs>
@@ -246,71 +111,24 @@ onUnmounted(() => {
           <filter id="spikeGlow"><feGaussianBlur stdDeviation="4" /><feComposite in="SourceGraphic" operator="over" /></filter>
         </defs>
 
-        <!-- 1. 全動態物理連結網 -->
-        <g stroke-linecap="round" fill="none">
-          <path 
-            v-for="(l, i) in links" 
-            :key="i" 
-            :d="getLinkD(l)" 
-            :stroke-width="l.width" 
-            :stroke="l.target.side === 'left' ? '#9F7AEA' : '#6D28D9'"
-            :opacity="0.85 - (l.target.depth * 0.15)" 
-          />
-        </g>
+        <!-- 圖層 1: 樹突網與末梢 (底層) -->
+        <DendriteLayer :nodes="nodes" :links="links" :tick-count="tickCount" :terminal-leaf-ids="terminalLeafIds" />
 
-        <!-- 2. 軸突主幹 (動態) -->
-        <path ref="axonPathRef" :d="axonD" stroke="#7C3AED" stroke-width="8" fill="none" stroke-linecap="round" />
+        <!-- 圖層 2: 軸突與髓鞘 (中層) -->
+        <AxonLayer ref="axonLayerRef" :axon-d="axonD" :myelin-points="myelinPoints" />
 
-        <!-- 3. 髓鞘系統 (跟隨軸突) -->
-        <g v-for="(p, i) in myelinPoints" :key="i" :transform="`translate(${p.x}, ${p.y}) rotate(${p.angle})`">
-          <rect 
-            :x="-p.width/2" 
-            y="-14" 
-            :width="p.width" 
-            height="28" 
-            rx="12" 
-            fill="url(#myelinGrad)" 
-            stroke="#B45309" 
-            stroke-width="1.5" 
-          />
-          <circle :cx="p.width * 0.1" cy="0" r="3.5" fill="#78350F" opacity="0.7" />
-        </g>
+        <!-- 圖層 3: 細胞本體 (頂層) -->
+        <SomaLayer :soma-node="somaNode" />
 
-        <!-- 4. 細胞本體 (可拖拽區域) -->
-        <g v-if="somaNode" class="draggable cursor-move">
-          <circle :cx="somaNode.x" :cy="somaNode.y" r="55" fill="#8B5CF6" stroke="#6D28D9" stroke-width="4" />
-          <circle :cx="somaNode.x" :cy="somaNode.y + 5" r="32" fill="#311B92" />
-          <circle :cx="somaNode.x" :cy="somaNode.y + 5" r="18" fill="#4527A0" />
-          <circle :cx="somaNode.x - 8" :cy="somaNode.y - 2" r="8" fill="#FFF" opacity="0.1" />
-        </g>
+        <!-- 圖層 4: 拖拽輔助點 (隱形) -->
+        <TerminalRootLayer :terminal-root-node="terminalRootNode" />
 
-        <!-- 5. 軸突末端根部 (可拖拽區域) -->
-        <circle 
-          v-if="terminalRootNode" 
-          class="draggable cursor-move"
-          :cx="terminalRootNode.x" 
-          :cy="terminalRootNode.y" 
-          r="40" 
-          fill="transparent" 
-        />
-
-        <!-- 6. 右側末梢小球 (動態) -->
-        <g fill="#6D28D9">
-          <circle 
-            v-for="id in terminalLeafIds" 
-            :key="id" 
-            :cx="nodes.find(n => n.id === id)?.x" 
-            :cy="nodes.find(n => n.id === id)?.y" 
-            r="6" 
-          />
-        </g>
-
-        <!-- 7. 脈衝動畫 (跟隨動態路徑) -->
+        <!-- 圖層 5: 脈衝動畫 (覆蓋層) -->
         <circle v-if="isFiring" r="12" fill="#FFF" filter="url(#spikeGlow)">
           <animateMotion dur="1.2s" repeatCount="1" :path="axonD" />
         </circle>
 
-        <!-- 8. 標籤 -->
+        <!-- 圖層 6: 標籤層 -->
         <g v-if="showLabels" class="labels text-[10px] font-black tracking-widest fill-white/10 uppercase italic">
           <text :x="(somaNode?.x || 0) - 200" :y="(somaNode?.y || 0) - 250">Dynamic_Network</text>
           <text :x="(terminalRootNode?.x || 0) - 50" :y="(terminalRootNode?.y || 0) + 220">Terminal_Boutons</text>
@@ -321,8 +139,8 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-.draggable { cursor: move; pointer-events: auto; }
+/* 確保 SVG 內部的 draggable 元素能接收滑鼠事件，其餘穿透 */
 svg { pointer-events: none; }
 svg * { pointer-events: none; }
-svg .draggable { pointer-events: auto; }
+:deep(.draggable) { pointer-events: auto !important; cursor: move; }
 </style>
