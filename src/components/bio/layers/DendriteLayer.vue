@@ -22,6 +22,10 @@ const getLinkD = (link: NeuronLink) => {
   
   return `M ${s.x} ${s.y} Q ${mx} ${my} ${t.x} ${t.y}`;
 };
+
+const getTargetNode = (target: string | NeuronNode): NeuronNode => {
+  return target as NeuronNode;
+};
 </script>
 
 <template>
@@ -33,8 +37,8 @@ const getLinkD = (link: NeuronLink) => {
         :key="i" 
         :d="getLinkD(l)" 
         :stroke-width="l.width" 
-        :stroke="l.target.type === 'dendrite' ? '#9F7AEA' : '#6D28D9'"
-        :opacity="0.85 - (l.target.depth * 0.15)" 
+        :stroke="getTargetNode(l.target).type === 'dendrite' ? '#9F7AEA' : '#6D28D9'"
+        :opacity="0.85 - (getTargetNode(l.target).depth * 0.15)" 
       />
     </g>
 

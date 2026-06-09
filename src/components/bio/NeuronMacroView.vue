@@ -1,9 +1,6 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
-import * as d3 from 'd3';
+import { ref, onMounted, watch } from 'vue';
 
-// 導入模型
-import type { NeuronNode } from './models/network-models';
 
 // 導入領域邏輯 (Physics & Geometry)
 import { useNetworkPhysics } from './physics/useNetworkPhysics';
@@ -11,14 +8,13 @@ import { useAxonGeometry } from './geometry/useAxonGeometry';
 
 // 導入視覺圖層 (Layers)
 import SomaLayer from './layers/SomaLayer.vue';
-import TerminalRootLayer from './layers/TerminalRootLayer.vue';
+
 import DendriteLayer from './layers/DendriteLayer.vue';
 import AxonLayer from './layers/AxonLayer.vue';
 
 // --- 1. 核心狀態與邏輯初始化 ---
 const showLabels = ref(true);
 const isFiring = ref(false);
-const svgRef = ref<SVGSVGElement | null>(null);
 const axonLayerRef = ref<any>(null);
 
 const { 
@@ -28,10 +24,8 @@ const {
   terminalRootNode, 
   terminalLeafIds,
   tickCount, 
-  simulation, 
   initNeuronData, 
-  startSimulation, 
-  dragBehavior 
+  startSimulation 
 } = useNetworkPhysics();
 
 const { 
@@ -64,20 +58,9 @@ onMounted(() => {
       // 每一幀更新時執行的額外邏輯
       updateMyelin();
     });
-
-    // 綁定拖拽行為
-    if (svgRef.value && simulation) {
-      const d = dragBehavior(simulation);
-      d3.select(svgRef.value).selectAll<SVGElement, NeuronNode>(".draggable")
-        .data(nodes.value.filter(n => n.type === 'soma' || n.id.startsWith('t-root')), d => d.id)
-        .call(d);
-    }
   }, 100);
 });
 
-onUnmounted(() => {
-  if (simulation) simulation.stop();
-});
 </script>
 
 <template>
@@ -94,7 +77,7 @@ onUnmounted(() => {
 
     <!-- SVG 畫布 -->
     <div class="w-[1150px] h-[650px] relative">
-      <svg ref="svgRef" viewBox="0 0 1150 650" class="w-full h-full drop-shadow-2xl !pointer-events-auto">
+      <svg viewBox="0 0 1150 650" class="w-full h-full drop-shadow-2xl !pointer-events-auto">
         <defs>
           <linearGradient id="myelinGrad" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stop-color="#FDE68A" /><stop offset="100%" stop-color="#F59E0B" />
@@ -111,8 +94,7 @@ onUnmounted(() => {
         <!-- 圖層 3: 細胞本體 (頂層) -->
         <SomaLayer :soma-node="somaNode" />
 
-        <!-- 圖層 4: 拖拽輔助點 (隱形) -->
-        <TerminalRootLayer :terminal-root-node="terminalRootNode" />
+
 
         <!-- 圖層 5: 脈衝動畫 (覆蓋層) -->
         <circle v-if="isFiring" r="12" fill="#FFF" filter="url(#spikeGlow)">
@@ -133,5 +115,4 @@ onUnmounted(() => {
 /* 確保 SVG 內部的 draggable 元素能接收滑鼠事件，其餘穿透 */
 svg { pointer-events: none; }
 svg * { pointer-events: none; }
-:deep(.draggable) { pointer-events: auto !important; cursor: move; }
 </style>

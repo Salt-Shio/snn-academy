@@ -11,10 +11,10 @@ export function useAxonGeometry(
 
   const axonD = computed(() => {
     // 雖然 tickCount 在這裡沒直接用到，但為了確保隨模擬更新，我們保留對它的依賴感
-    const _ = tickCount.value;
+    tickCount.value;
     const s = somaNode.value;
     const t = terminalRootNode.value;
-    if (!s || !t || s.x === undefined || t.x === undefined) return "";
+    if (!s || !t || s.x === undefined || t.x === undefined || s.y === undefined || t.y === undefined) return "";
 
     const dx = t.x - s.x;
     const dy = t.y - s.y;

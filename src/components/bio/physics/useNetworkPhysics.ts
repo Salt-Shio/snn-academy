@@ -1,4 +1,4 @@
-import { ref, shallowRef } from 'vue';
+import { ref, shallowRef, onUnmounted } from 'vue';
 import * as d3 from 'd3';
 import type { NeuronNode, NeuronLink } from '../models/network-models';
 
@@ -113,12 +113,12 @@ export function useNetworkPhysics() {
 
     simulation = d3.forceSimulation<NeuronNode>(nodes.value)
       .force("link", d3.forceLink<NeuronNode, NeuronLink>(links.value).id(d => d.id).distance(45).strength(1))
-      .force("charge", d3.forceManyBody().strength(d => d.type === 'soma' ? -500 : -120))
+      .force("charge", d3.forceManyBody<NeuronNode>().strength(d => d.type === 'soma' ? -500 : -120))
       .force("x", d3.forceX<NeuronNode>(d => d.type === 'soma' ? anchors.value.soma.x : anchors.value.terminal.x)
         .strength(d => (d.type === 'soma' || d.id.startsWith('t-root')) ? 0.8 : 0))
       .force("y", d3.forceY<NeuronNode>(d => d.type === 'soma' ? anchors.value.soma.y : anchors.value.terminal.y)
         .strength(d => (d.type === 'soma' || d.id.startsWith('t-root')) ? 0.8 : 0))
-      .force("radial", d3.forceRadial(200, anchors.value.soma.x, anchors.value.soma.y).strength(d => d.type === 'dendrite' ? 0.2 : 0))
+      .force("radial", d3.forceRadial<NeuronNode>(200, anchors.value.soma.x, anchors.value.soma.y).strength(d => d.type === 'dendrite' ? 0.2 : 0))
       .alphaDecay(0.01);
 
     simulation.on("tick", () => {
@@ -127,23 +127,9 @@ export function useNetworkPhysics() {
     });
   };
 
-  const dragBehavior = (sim: d3.Simulation<NeuronNode, NeuronLink>) => {
-    return d3.drag<any, NeuronNode>()
-      .on("start", (event) => {
-        if (!event.active) sim.alphaTarget(0.3).restart();
-        event.subject.fx = event.subject.x;
-        event.subject.fy = event.subject.y;
-      })
-      .on("drag", (event) => {
-        event.subject.fx = event.x;
-        event.subject.fy = event.y;
-      })
-      .on("end", (event) => {
-        if (!event.active) sim.alphaTarget(0);
-        event.subject.fx = null;
-        event.subject.fy = null;
-      });
-  };
+  onUnmounted(() => {
+    if (simulation) simulation.stop();
+  });
 
   return {
     nodes,
@@ -153,9 +139,7 @@ export function useNetworkPhysics() {
     terminalLeafIds,
     anchors,
     tickCount,
-    simulation,
     initNeuronData,
-    startSimulation,
-    dragBehavior
+    startSimulation
   };
 }

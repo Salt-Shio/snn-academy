@@ -7,7 +7,7 @@ defineProps<{
 </script>
 
 <template>
-  <g v-if="somaNode" class="soma-layer draggable cursor-move">
+  <g v-if="somaNode && somaNode.x !== undefined && somaNode.y !== undefined" class="soma-layer">
     <!-- 外層光暈/主體 -->
     <circle :cx="somaNode.x" :cy="somaNode.y" r="55" fill="#8B5CF6" stroke="#6D28D9" stroke-width="4" />
     <!-- 細胞核內層 -->
@@ -17,7 +17,3 @@ defineProps<{
     <circle :cx="somaNode.x - 8" :cy="somaNode.y - 2" r="8" fill="#FFF" opacity="0.1" />
   </g>
 </template>
-
-<style scoped>
-.draggable { cursor: move; pointer-events: auto; }
-</style>
