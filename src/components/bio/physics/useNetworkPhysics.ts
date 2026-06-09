@@ -10,13 +10,22 @@ export function useNetworkPhysics() {
 
   const somaNode = ref<NeuronNode | null>(null);
   const terminalRootNode = ref<NeuronNode | null>(null);
+  const terminalLeafIds = ref<string[]>([]);
+  const anchors = ref({
+    soma: { x: 250, y: 300 },
+    terminal: { x: 900, y: 380 }
+  });
 
   /**
    * 初始化單一神經元拓撲資料
    * @param neuronId 唯一識別碼
-   * @param anchor 初始位置 {x, y}
+   * @param somaX 初始 X
+   * @param somaY 初始 Y
    */
-  const initNeuronData = (neuronId: string, anchor = { x: 250, y: 300 }) => {
+  const initNeuronData = (neuronId: string, somaX = 250, somaY = 300) => {
+    anchors.value.soma = { x: somaX, y: somaY };
+    anchors.value.terminal = { x: somaX + 650, y: somaY + 80 };
+
     const n: NeuronNode[] = [];
     const l: NeuronLink[] = [];
 
@@ -25,57 +34,50 @@ export function useNetworkPhysics() {
       id: `soma-${neuronId}`, 
       neuronId, 
       depth: 0, 
-      side: 'core', 
       type: 'soma', 
-      x: anchor.x, 
-      y: anchor.y 
+      x: anchors.value.soma.x, 
+      y: anchors.value.soma.y 
     };
     somaNode.value = soma;
     n.push(soma);
 
-    // 2. 遞迴生成左側樹突 (100° 到 260°)
-    const growLeft = (p: NeuronNode, d: number) => {
+    // 2. 遞迴生成樹突 (全方位自然生長)
+    const growDendrites = (p: NeuronNode, d: number) => {
       if (d >= 4) return;
-      const count = d === 0 ? 6 : (Math.random() > 0.4 ? 2 : 1);
+      const count = d === 0 ? 8 : (Math.random() > 0.4 ? 2 : 1);
       for (let i = 0; i < count; i++) {
-        let angle;
-        if (d === 0) {
-          angle = (100 + (160 / (count - 1)) * i) * (Math.PI / 180);
-        } else {
-          angle = Math.PI + (Math.random() - 0.5) * 2;
-        }
+        // 360 度均勻分佈生長
+        const angle = ((360 / count) * i + (Math.random() - 0.5) * 30) * (Math.PI / 180);
         const dist = 30 + Math.random() * 20;
         const c: NeuronNode = { 
-          id: `L-${neuronId}-${p.id}-${d}-${i}`, 
+          id: `D-${neuronId}-${p.id}-${d}-${i}`, 
           neuronId,
           depth: d + 1, 
-          side: 'left', 
           type: 'dendrite', 
           x: p.x! + Math.cos(angle) * dist, 
           y: p.y! + Math.sin(angle) * dist 
         };
         n.push(c);
         l.push({ source: p.id, target: c.id, width: 14 * Math.pow(0.52, d) });
-        growLeft(c, d + 1);
+        growDendrites(c, d + 1);
       }
     };
-    growLeft(soma, 0);
+    growDendrites(soma, 0);
 
     // 3. 軸突末端根部
     const terminalRoot: NeuronNode = { 
       id: `t-root-${neuronId}`, 
       neuronId,
       depth: 0, 
-      side: 'core', 
       type: 'terminal', 
-      x: anchor.x + 650, 
-      y: anchor.y + 80 
+      x: anchors.value.terminal.x, 
+      y: anchors.value.terminal.y 
     };
     terminalRootNode.value = terminalRoot;
     n.push(terminalRoot);
 
-    // 4. 遞迴生成右側末梢
-    const growRight = (p: NeuronNode, d: number) => {
+    // 4. 遞迴生成末梢
+    const growTerminals = (p: NeuronNode, d: number) => {
       if (d >= 2) return;
       const count = d === 0 ? 4 : 2; 
       for (let i = 0; i < count; i++) {
@@ -85,20 +87,25 @@ export function useNetworkPhysics() {
           id: `R-${neuronId}-${p.id}-${d}-${i}`, 
           neuronId,
           depth: d + 1, 
-          side: 'right', 
           type: 'terminal', 
           x: p.x! + Math.cos(angle) * dist, 
           y: p.y! + Math.sin(angle) * dist 
         };
         n.push(c);
         l.push({ source: p.id, target: c.id, width: 6 * Math.pow(0.7, d) });
-        growRight(c, d + 1);
+        growTerminals(c, d + 1);
       }
     };
-    growRight(terminalRoot, 0);
+    growTerminals(terminalRoot, 0);
 
     nodes.value = n;
     links.value = l;
+
+    // 計算末梢葉子節點
+    const sources = new Set(l.map(link => link.source));
+    terminalLeafIds.value = n
+      .filter(node => node.type === 'terminal' && !node.id.startsWith('t-root') && !sources.has(node.id))
+      .map(node => node.id);
   };
 
   const startSimulation = (onTick?: () => void) => {
@@ -107,16 +114,11 @@ export function useNetworkPhysics() {
     simulation = d3.forceSimulation<NeuronNode>(nodes.value)
       .force("link", d3.forceLink<NeuronNode, NeuronLink>(links.value).id(d => d.id).distance(45).strength(1))
       .force("charge", d3.forceManyBody().strength(d => d.type === 'soma' ? -500 : -120))
-      // 核心修復：強化 Soma 的定位力 (strength 提升到 0.8)，並弱化樹突的全局拉力 (strength 降到 0.02)
-      .force("x", d3.forceX<NeuronNode>(d => {
-        if (d.type === 'soma') return 250;
-        if (d.id.startsWith('t-root')) return 900;
-        // 樹突依然傾向左側，但力量極小，避免拉歪 Soma
-        return d.side === 'left' ? 120 : 1000;
-      }).strength(d => (d.type === 'soma' || d.id.startsWith('t-root')) ? 0.8 : 0.02))
-      .force("y", d3.forceY<NeuronNode>(d => d.type === 'soma' ? 300 : (d.id.startsWith('t-root') ? 380 : d.y!)).strength(d => d.type === 'soma' ? 0.8 : 0.1))
-      // 讓左側樹突圍繞著 Soma 展開，而不是死板地往左衝
-      .force("radialLeft", d3.forceRadial(200, 250, 300).strength(d => d.side === 'left' ? 0.2 : 0))
+      .force("x", d3.forceX<NeuronNode>(d => d.type === 'soma' ? anchors.value.soma.x : anchors.value.terminal.x)
+        .strength(d => (d.type === 'soma' || d.id.startsWith('t-root')) ? 0.8 : 0))
+      .force("y", d3.forceY<NeuronNode>(d => d.type === 'soma' ? anchors.value.soma.y : anchors.value.terminal.y)
+        .strength(d => (d.type === 'soma' || d.id.startsWith('t-root')) ? 0.8 : 0))
+      .force("radial", d3.forceRadial(200, anchors.value.soma.x, anchors.value.soma.y).strength(d => d.type === 'dendrite' ? 0.2 : 0))
       .alphaDecay(0.01);
 
     simulation.on("tick", () => {
@@ -148,6 +150,8 @@ export function useNetworkPhysics() {
     links,
     somaNode,
     terminalRootNode,
+    terminalLeafIds,
+    anchors,
     tickCount,
     simulation,
     initNeuronData,

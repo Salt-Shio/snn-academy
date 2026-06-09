@@ -33,7 +33,7 @@ const getLinkD = (link: NeuronLink) => {
         :key="i" 
         :d="getLinkD(l)" 
         :stroke-width="l.width" 
-        :stroke="l.target.side === 'left' ? '#9F7AEA' : '#6D28D9'"
+        :stroke="l.target.type === 'dendrite' ? '#9F7AEA' : '#6D28D9'"
         :opacity="0.85 - (l.target.depth * 0.15)" 
       />
     </g>

@@ -26,6 +26,7 @@ const {
   links, 
   somaNode, 
   terminalRootNode, 
+  terminalLeafIds,
   tickCount, 
   simulation, 
   initNeuronData, 
@@ -43,16 +44,6 @@ const {
 // 同步子組件中的 SVG Path 引用到幾何運算邏輯中
 watch(() => axonLayerRef.value?.pathRef, (el) => {
   if (el) axonPathRef.value = el;
-});
-
-// --- 2. 計算屬性 ---
-// 精確找出右側末梢的葉子節點
-const terminalLeafIds = computed(() => {
-  const _ = tickCount.value;
-  const sources = new Set(links.value.map(l => (typeof l.source === 'string' ? l.source : (l.source as any).id)));
-  return nodes.value
-    .filter(n => n.type === 'terminal' && !n.id.startsWith('t-root') && !sources.has(n.id))
-    .map(n => n.id);
 });
 
 // --- 3. 動作互動 ---

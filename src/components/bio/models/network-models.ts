@@ -7,7 +7,6 @@ export interface NeuronNode extends d3.SimulationNodeDatum {
   id: string;           // 節點唯一識別碼 (例如: soma-n1, L-n1-0-1)
   neuronId: string;     // 所屬神經元的識別碼 (支援多神經元網路)
   depth: number;        // 分支深度
-  side: 'left' | 'right' | 'core';
   type: 'soma' | 'dendrite' | 'terminal';
 }
 
