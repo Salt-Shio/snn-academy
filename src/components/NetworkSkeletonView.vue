@@ -18,6 +18,30 @@ const getDendriteLine = (neuron: VisualNeuron, dendrite: any) => {
   const endY = startY + dendrite.length * Math.sin(dendrite.angle);
   return { x1: startX, y1: startY, x2: endX, y2: endY };
 };
+
+// 依電壓進行顏色插值 (HSL: 深灰藍到明亮橘紅)
+const getNeuronColor = (neuron: VisualNeuron) => {
+  if (neuron.isSpiking) return '#ef4444';
+  const minV = -75;
+  const maxV = -55;
+  const ratio = Math.max(0, Math.min(1, (neuron.voltage - minV) / (maxV - minV)));
+  const h = 220 + (340 - 220) * ratio; // 220 (深藍) -> 340 (紅)
+  const s = 40 + (80 - 40) * ratio;   // 40% -> 80%
+  const l = 12 + (40 - 12) * ratio;   // 12% -> 40%
+  return `hsl(${h}, ${s}%, ${l}%)`;
+};
+
+// 依電壓進行邊框顏色插值
+const getNeuronStrokeColor = (neuron: VisualNeuron) => {
+  if (neuron.isSpiking) return '#fca5a5';
+  const minV = -75;
+  const maxV = -55;
+  const ratio = Math.max(0, Math.min(1, (neuron.voltage - minV) / (maxV - minV)));
+  const h = 220 + (340 - 220) * ratio;
+  const s = 30 + (70 - 30) * ratio;
+  const l = 35 + (55 - 35) * ratio;
+  return `hsl(${h}, ${s}%, ${l}%)`;
+};
 </script>
 
 <template>
@@ -72,15 +96,34 @@ const getDendriteLine = (neuron: VisualNeuron, dendrite: any) => {
           :cx="neuron.cx" 
           :cy="neuron.cy" 
           :r="neuron.soma.radius"
-          :fill="neuron.isSpiking ? '#ef4444' : '#0f172a'" 
-          :stroke="neuron.isSpiking ? '#fca5a5' : '#ef4444'" 
+          :fill="getNeuronColor(neuron)" 
+          :stroke="getNeuronStrokeColor(neuron)" 
           stroke-width="3"
-          class="transition-colors duration-200"
+          class="transition-all duration-200"
+          :style="neuron.isSpiking ? 'filter: drop-shadow(0 0 8px rgba(239, 68, 68, 0.8))' : ''"
         />
         
         <!-- ID 標籤 -->
         <text :x="neuron.cx" :y="neuron.cy + neuron.soma.radius + 15" text-anchor="middle" class="fill-slate-500 text-[10px] font-mono">
           {{ neuron.id }}
+        </text>
+
+        <!-- 電壓與電流數值標籤 -->
+        <text 
+          :x="neuron.cx" 
+          :y="neuron.cy + neuron.soma.radius + 28" 
+          text-anchor="middle" 
+          :class="['font-mono text-[9px] font-bold transition-colors', neuron.isSpiking ? 'fill-rose-400 font-extrabold animate-pulse' : 'fill-slate-400']"
+        >
+          {{ neuron.isSpiking ? '★ SPIKE!' : `V: ${neuron.voltage.toFixed(1)} mV` }}
+        </text>
+        <text 
+          :x="neuron.cx" 
+          :y="neuron.cy + neuron.soma.radius + 38" 
+          text-anchor="middle" 
+          :class="['font-mono text-[8px] transition-colors', neuron.totalCurrent > 0 ? 'fill-amber-400 font-bold' : 'fill-slate-500']"
+        >
+          I: {{ neuron.totalCurrent.toFixed(1) }} pA
         </text>
       </g>
     </svg>

@@ -62,6 +62,7 @@ export class LIFNeuron implements INetworkNode {
    */
   public step(dt: number, t: number, syn_input: number = 0, ext_current: number = 0): boolean {
     this.hasSpiked = false;
+    this.current_i = syn_input + ext_current; // 記錄總推力 (包含突觸與外部注入，不論是否處於不應期或發火)
 
     if (this.tref_counter > 0) {
       this.v = this.params.V_reset;
@@ -74,7 +75,6 @@ export class LIFNeuron implements INetworkNode {
       return true;
     }
 
-    this.current_i = syn_input + ext_current; // 記錄總推力
     const current_gL = this.resolveG(this.params.g_L, t, this.v);
 
     const i_leak = -current_gL * (this.v - this.params.V_L);

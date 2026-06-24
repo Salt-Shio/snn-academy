@@ -53,6 +53,7 @@ export class VisualNetwork {
         // 同步發火狀態與膜電位
         vNode.isSpiking = snnNode.hasSpiked;
         vNode.voltage = snnNode.getVoltage();
+        vNode.totalCurrent = snnNode.getTotalCurrent();
       }
     });
   }
