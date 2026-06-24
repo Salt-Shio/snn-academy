@@ -1,11 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import BasicLIFSandbox from './components/BasicLIFSandbox.vue';
-import NetworkSkeletonView from './components/NetworkSkeletonView.vue';
-import { FeedforwardLayout } from './lib/snn/visual/layout/FeedforwardLayout';
-
-// 初始化視覺化拓樸 (3 Pre, 2 Post)
-const vNetwork = ref(FeedforwardLayout.create3x2(100, 100, 450, 150));
+import TopologyView from './components/TopologyView.vue';
 
 // 定義視圖模式
 type ViewMode = 'sandbox' | 'topology';
@@ -36,10 +32,10 @@ const currentView = ref<ViewMode>('topology');
         <div :key="currentView">
           <div v-if="currentView === 'topology'" class="space-y-6">
             <div class="flex items-center justify-between">
-              <h2 class="text-xl font-bold text-white tracking-tight">Topology Skeleton (3x2)</h2>
-              <p class="text-xs text-slate-500 font-mono italic">Phase 2: Skeleton Rendering Verified</p>
+              <h2 class="text-xl font-bold text-white tracking-tight">Topology Controller (3x2)</h2>
+              <p class="text-xs text-slate-500 font-mono italic">Phase 2: Controller Integrated</p>
             </div>
-            <NetworkSkeletonView :network="vNetwork" />
+            <TopologyView />
           </div>
           <div v-else>
             <BasicLIFSandbox />

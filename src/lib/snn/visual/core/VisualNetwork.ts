@@ -1,6 +1,7 @@
 import { VisualNeuron } from './VisualNeuron';
 import { VisualConnection } from './VisualConnection';
 import { BasicDendrite } from '../parts/BasicDendrite';
+import type { SNNNetwork } from '../../network/core/SNNNetwork';
 
 export class VisualNetwork {
   public neurons: Map<string, VisualNeuron> = new Map();
@@ -39,5 +40,20 @@ export class VisualNetwork {
     source.addOutgoingConnection(connection);
 
     this.connections.push(connection);
+  }
+
+  /**
+   * 從底層 SNN 網路同步狀態
+   * @param snn 數學引擎實例
+   */
+  public syncStates(snn: SNNNetwork): void {
+    this.neurons.forEach((vNode, id) => {
+      const snnNode = snn.getNode(id);
+      if (snnNode) {
+        // 同步發火狀態與膜電位
+        vNode.isSpiking = snnNode.hasSpiked;
+        vNode.voltage = snnNode.getVoltage();
+      }
+    });
   }
 }

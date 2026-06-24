@@ -6,6 +6,7 @@ export class VisualNeuron {
   public cx: number;
   public cy: number;
   public isSpiking: boolean = false;
+  public voltage: number = -75;
 
   // 5 個單位的核心組成
   public soma: IVisualSoma;                 // 單位 1: 大圓
