@@ -65,35 +65,7 @@ const getConnectionColor = (conn: VisualConnection) => {
 };
 
 // 突觸標籤文字 (根據模式組合產生)
-const getSynapseLabel = (conn: VisualConnection): string => {
-  const parts: string[] = [];
-  parts.push(`I: ${conn.iSyn.toFixed(1)}`);
-
-  if (isCOBA.value) {
-    parts.push(`g: ${conn.signalStrength.toFixed(2)}`);
-    parts.push(`ΔV: ${conn.drivingForce.toFixed(1)}`);
-  }
-
-  if (isSTP.value) {
-    parts.push(`R: ${conn.stpR.toFixed(2)} u: ${conn.stpU.toFixed(2)}`);
-  }
-
-  if (isSTDP.value) {
-    parts.push(`w: ${conn.stdpWeight.toFixed(3)}`);
-    parts.push(`P: ${conn.stdpP.toFixed(3)} M: ${conn.stdpM.toFixed(3)}`);
-  }
-
-  return parts.join(' | ');
-};
-
-// 神經元額外標籤行數計算 (用於 y 偏移)
-const getNeuronExtraLines = (neuron: VisualNeuron): string[] => {
-  const lines: string[] = [];
-  if (isALIF.value) {
-    lines.push(`w_adapt: ${neuron.adaptationCurrent.toFixed(1)} pA`);
-  }
-  return lines;
-};
+// 神經元額外標籤行數計算 (原先放置於此處)
 </script>
 
 <template>

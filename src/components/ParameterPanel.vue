@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { reactive, computed, watch } from 'vue';
+import { Info } from 'lucide-vue-next';
 
 // --- 型別定義 ---
 export type NeuronType = 'lif' | 'alif';
@@ -44,6 +45,7 @@ export interface NetworkConfig {
 
 const emit = defineEmits<{
   (e: 'config-change', config: NetworkConfig): void;
+  (e: 'open-info', docName: string): void;
 }>();
 
 // --- 響應式配置狀態 ---
@@ -98,12 +100,7 @@ watch(config, () => {
 }, { deep: true, immediate: true });
 
 // 三軸選擇按鈕的公共 class
-const btnClass = (active: boolean, color: string) => {
-  const base = 'flex-1 py-1.5 rounded-md font-bold transition-all text-[10px] uppercase tracking-wider';
-  return active
-    ? `${base} bg-${color}-600 text-white shadow-lg shadow-${color}-500/20`
-    : `${base} text-slate-500 hover:text-slate-300`;
-};
+// 三軸選擇按鈕的公共 class (已移除)
 </script>
 
 <template>
@@ -117,19 +114,34 @@ const btnClass = (active: boolean, color: string) => {
 
     <!-- ============ 1. 模式選擇器 ============ -->
     <div class="space-y-2">
-      <div class="text-[9px] text-slate-500 uppercase font-black tracking-widest">Neuron</div>
+      <div class="flex items-center justify-between">
+        <div class="text-[9px] text-slate-500 uppercase font-black tracking-widest">Neuron</div>
+        <button @click="emit('open-info', config.neuronType === 'lif' ? 'LIF_Neuron' : 'ALIF_Neuron')" class="text-slate-500 hover:text-indigo-400 transition-colors">
+          <Info class="w-3.5 h-3.5" />
+        </button>
+      </div>
       <div class="grid grid-cols-2 p-1 bg-slate-900 rounded-lg gap-1">
         <button @click="config.neuronType = 'lif'" :class="config.neuronType === 'lif' ? 'py-1.5 rounded-md font-bold transition-all text-[10px] uppercase tracking-wider bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'py-1.5 rounded-md font-bold transition-all text-[10px] uppercase tracking-wider text-slate-500 hover:text-slate-300'">LIF</button>
         <button @click="config.neuronType = 'alif'" :class="config.neuronType === 'alif' ? 'py-1.5 rounded-md font-bold transition-all text-[10px] uppercase tracking-wider bg-red-600 text-white shadow-lg shadow-red-500/20' : 'py-1.5 rounded-md font-bold transition-all text-[10px] uppercase tracking-wider text-slate-500 hover:text-slate-300'">ALIF</button>
       </div>
 
-      <div class="text-[9px] text-slate-500 uppercase font-black tracking-widest">Physics</div>
+      <div class="flex items-center justify-between mt-2">
+        <div class="text-[9px] text-slate-500 uppercase font-black tracking-widest">Physics</div>
+        <button @click="emit('open-info', config.physicsModel === 'cuba' ? 'CUBA_Physics' : 'COBA_Physics')" class="text-slate-500 hover:text-indigo-400 transition-colors">
+          <Info class="w-3.5 h-3.5" />
+        </button>
+      </div>
       <div class="grid grid-cols-2 p-1 bg-slate-900 rounded-lg gap-1">
         <button @click="config.physicsModel = 'cuba'" :class="config.physicsModel === 'cuba' ? 'py-1.5 rounded-md font-bold transition-all text-[10px] uppercase tracking-wider bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'py-1.5 rounded-md font-bold transition-all text-[10px] uppercase tracking-wider text-slate-500 hover:text-slate-300'">CUBA</button>
         <button @click="config.physicsModel = 'coba'" :class="config.physicsModel === 'coba' ? 'py-1.5 rounded-md font-bold transition-all text-[10px] uppercase tracking-wider bg-emerald-600 text-white shadow-lg shadow-emerald-500/20' : 'py-1.5 rounded-md font-bold transition-all text-[10px] uppercase tracking-wider text-slate-500 hover:text-slate-300'">COBA</button>
       </div>
 
-      <div class="text-[9px] text-slate-500 uppercase font-black tracking-widest">Dynamics</div>
+      <div class="flex items-center justify-between mt-2">
+        <div class="text-[9px] text-slate-500 uppercase font-black tracking-widest">Dynamics</div>
+        <button @click="emit('open-info', config.synapseType === 'static' ? 'Static_Dynamics' : config.synapseType === 'stp' ? 'STP_Dynamics' : 'STDP_Dynamics')" class="text-slate-500 hover:text-indigo-400 transition-colors">
+          <Info class="w-3.5 h-3.5" />
+        </button>
+      </div>
       <div class="grid grid-cols-3 p-1 bg-slate-900 rounded-lg gap-1">
         <button @click="config.synapseType = 'static'" :class="config.synapseType === 'static' ? 'py-1.5 rounded-md font-bold transition-all text-[10px] uppercase tracking-wider bg-orange-600 text-white shadow-lg shadow-orange-500/20' : 'py-1.5 rounded-md font-bold transition-all text-[10px] uppercase tracking-wider text-slate-500 hover:text-slate-300'">Static</button>
         <button @click="config.synapseType = 'stp'" :class="config.synapseType === 'stp' ? 'py-1.5 rounded-md font-bold transition-all text-[10px] uppercase tracking-wider bg-orange-600 text-white shadow-lg shadow-orange-500/20' : 'py-1.5 rounded-md font-bold transition-all text-[10px] uppercase tracking-wider text-slate-500 hover:text-slate-300'">STP</button>

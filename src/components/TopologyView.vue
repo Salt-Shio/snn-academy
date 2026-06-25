@@ -1,11 +1,15 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { ref } from 'vue';
 // 導入視覺層
 import { VisualNetwork } from '../lib/snn/visual/core/VisualNetwork';
 import { FeedforwardLayout } from '../lib/snn/visual/layout/FeedforwardLayout';
 import NetworkSkeletonView from './NetworkSkeletonView.vue';
 import ParameterPanel from './ParameterPanel.vue';
 import type { NetworkConfig } from './ParameterPanel.vue';
+import MathDrawer from './MathDrawer.vue';
+
+// 預先載入所有 Markdown 文件
+const rawDocs = import.meta.glob('../docs/*.md', { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
 
 // 導入數學層
 import { SNNNetwork } from '../lib/snn/network/core/SNNNetwork';
@@ -30,6 +34,16 @@ const dt = 0.1;
 
 // 保存當前配置用於顯示模式判斷
 const activeConfig = ref<NetworkConfig | null>(null);
+
+// Math Drawer 狀態
+const isDrawerOpen = ref(false);
+const drawerContent = ref('');
+
+const handleOpenInfo = (docName: string) => {
+  const path = `../docs/${docName}.md`;
+  drawerContent.value = rawDocs[path] || `# 找不到文件\n無法載入 ${docName}.md`;
+  isDrawerOpen.value = true;
+};
 
 /**
  * 根據配置建立整個數學網路
@@ -151,9 +165,9 @@ const doReset = () => {
 </script>
 
 <template>
-  <div class="topology-view flex gap-6">
+  <div class="topology-view flex gap-6 relative">
     <!-- 左側: 參數面板 -->
-    <ParameterPanel @config-change="onConfigChange" />
+    <ParameterPanel @config-change="onConfigChange" @open-info="handleOpenInfo" />
 
     <!-- 右側: 主要內容區 -->
     <div class="flex-1 space-y-6 min-w-0">
@@ -206,9 +220,12 @@ const doReset = () => {
 
       <!-- 說明 -->
       <div class="p-3 bg-black/20 rounded border border-white/5 text-[9px] text-slate-500 italic">
-        * 左側面板切換模式與調整參數。PRE 按鈕控制電流注入。Step 推進模擬。
+        * 左側面板切換模式與調整參數。PRE 按鈕控制電流注入。Step 推進模擬。點擊面板上的 (i) 查看物理與數學模型細節。
       </div>
     </div>
+
+    <!-- Math Drawer 元件 -->
+    <MathDrawer :is-open="isDrawerOpen" :markdown-content="drawerContent" @close="isDrawerOpen = false" />
   </div>
 </template>
 
