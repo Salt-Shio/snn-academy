@@ -2,6 +2,10 @@ import { VisualNeuron } from './VisualNeuron';
 import { VisualConnection } from './VisualConnection';
 import { BasicDendrite } from '../parts/BasicDendrite';
 import type { SNNNetwork } from '../../network/core/SNNNetwork';
+import { ALIFNeuron } from '../../neurons/ALIFNeuron';
+import { STPSynapse } from '../../synapses/dynamics/STPSynapse';
+import { STDPSynapse } from '../../synapses/dynamics/STDPSynapse';
+import { BaseSynapse } from '../../synapses/dynamics/BaseSynapse';
 
 export class VisualNetwork {
   public neurons: Map<string, VisualNeuron> = new Map();
@@ -47,6 +51,7 @@ export class VisualNetwork {
    * @param snn 數學引擎實例
    */
   public syncStates(snn: SNNNetwork): void {
+    // 1. 同步神經元狀態
     this.neurons.forEach((vNode, id) => {
       const snnNode = snn.getNode(id);
       if (snnNode) {
@@ -54,7 +59,45 @@ export class VisualNetwork {
         vNode.isSpiking = snnNode.hasSpiked;
         vNode.voltage = snnNode.getVoltage();
         vNode.totalCurrent = snnNode.getTotalCurrent();
+
+        // ALIF: 同步適應性電流
+        if (snnNode instanceof ALIFNeuron) {
+          vNode.adaptationCurrent = snnNode.getAdaptationCurrent();
+        }
       }
     });
+
+    // 2. 同步突觸連線狀態
+    for (const vConn of this.connections) {
+      const snnConn = snn.getConnectionsBetween(vConn.sourceId, vConn.targetId);
+      if (!snnConn) continue;
+
+      // 共通：等效電流與驅動力
+      vConn.iSyn = snnConn.lastISyn;
+      vConn.drivingForce = snnConn.lastDrivingForce;
+
+      // 透過物理層的 dynamics 存取動態層實體
+      const dynamics = (snnConn.transmission as any).dynamics;
+      if (!dynamics) continue;
+
+      // 訊號強度 (BaseSynapse 的 getter)
+      if (dynamics instanceof BaseSynapse) {
+        vConn.signalStrength = dynamics.getSignalStrength();
+      }
+
+      // STP 專屬
+      if (dynamics instanceof STPSynapse) {
+        vConn.stpR = dynamics.R;
+        vConn.stpU = dynamics.u;
+      }
+
+      // STDP 專屬
+      if (dynamics instanceof STDPSynapse) {
+        vConn.stdpWeight = dynamics.getWeight();
+        vConn.stdpP = dynamics.getPreTrace();
+        vConn.stdpM = dynamics.getPostTrace();
+      }
+    }
   }
 }
+

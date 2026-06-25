@@ -17,6 +17,12 @@ export class Connection {
   /** 負責可塑性更新的學習機制 (選擇性存在) */
   public learningRule?: ILearningRule;
 
+  /** 上一步計算的等效突觸電流 (pA)，供視覺層即時監控 */
+  public lastISyn: number = 0;
+
+  /** 上一步的驅動力 (V - V_rev)，僅 COBA 模式有意義 (mV) */
+  public lastDrivingForce: number = 0;
+
   /**
    * @param sourceId 突觸前節點 ID
    * @param targetId 突觸後節點 ID

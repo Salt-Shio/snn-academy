@@ -27,7 +27,7 @@ const currentView = ref<ViewMode>('topology');
     </nav>
 
     <!-- 主要檢視區 -->
-    <main class="w-full max-w-7xl mx-auto p-8">
+    <main class="w-full max-w-[1800px] mx-auto p-8">
       <Transition name="page-fade" mode="out-in">
         <div :key="currentView">
           <div v-if="currentView === 'topology'" class="space-y-6">

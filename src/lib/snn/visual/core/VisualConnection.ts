@@ -15,9 +15,38 @@ export class VisualConnection {
   
   public hasPulse: boolean = false;
 
+  // --- 突觸即時狀態 (由 VisualNetwork.syncStates 同步) ---
+  /** 等效突觸電流 (pA) */
+  public iSyn: number = 0;
+  /** 訊號強度 S(t) (pA 或 nS) */
+  public signalStrength: number = 0;
+  /** COBA 驅動力 (V - V_rev) (mV) */
+  public drivingForce: number = 0;
+  /** STP 可用資源 R */
+  public stpR: number = 1.0;
+  /** STP 釋放機率 u */
+  public stpU: number = 0;
+  /** STDP 動態權重 */
+  public stdpWeight: number = 0;
+  /** STDP 前級跡線 P */
+  public stdpP: number = 0;
+  /** STDP 後級跡線 M */
+  public stdpM: number = 0;
+
   constructor(sourceId: string, targetId: string) {
     this.id = `link-${sourceId}-${targetId}`;
     this.sourceId = sourceId;
     this.targetId = targetId;
   }
+
+  /**
+   * 取得連線中點座標 (供 SVG Label 定位)
+   */
+  public getMidPoint(): Point2D {
+    return {
+      x: (this.startPoint.x + this.endPoint.x) / 2,
+      y: (this.startPoint.y + this.endPoint.y) / 2,
+    };
+  }
 }
+

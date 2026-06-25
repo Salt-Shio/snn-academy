@@ -37,5 +37,12 @@ export abstract class BaseSynapse implements ISynapseDynamics {
     this.signalStrength = 0;
   }
 
+  /**
+   * 取得當前的抽象訊號強度 S(t)
+   */
+  public getSignalStrength(): number {
+    return this.signalStrength;
+  }
+
   public abstract step(dt: number, preSpike: boolean): number;
 }

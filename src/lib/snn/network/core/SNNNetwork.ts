@@ -1,6 +1,7 @@
 import type { INetworkNode } from './INetworkNode';
 import type { Connection } from './Connection';
 import type { ISynapsePhysics } from '../../synapses/interfaces/ISynapsePhysics';
+import { CobaSynapse } from '../../synapses/physics/CobaSynapse';
 
 export type StepCallback = (time: number, network: SNNNetwork) => void;
 
@@ -86,9 +87,17 @@ export class SNNNetwork {
 
       if (!source || !target) continue;
 
+      const postV = target.getVoltage();
+
       // 透過物理層取得轉換後的等效電流 I_syn
       // 這裡物理層內部會呼叫動態層進行時間推進
-      const i_syn = conn.transmission.getEquivalentCurrent(dt, source.hasSpiked, target.getVoltage());
+      const i_syn = conn.transmission.getEquivalentCurrent(dt, source.hasSpiked, postV);
+
+      // 紀錄即時突觸資訊供視覺層同步
+      conn.lastISyn = i_syn;
+      if (conn.transmission instanceof CobaSynapse) {
+        conn.lastDrivingForce = postV - conn.transmission.vRev;
+      }
 
       // 將電流累加進 Target 的緩衝區
       const currentVal = this.inputBuffer.get(conn.targetId) || 0;
@@ -126,5 +135,19 @@ export class SNNNetwork {
       if (node.hasSpiked) firedIds.push(id);
     });
     return firedIds;
+  }
+
+  /**
+   * 獲取所有連線列表（供視覺層同步使用）。
+   */
+  public getConnections(): Connection[] {
+    return this.connections;
+  }
+
+  /**
+   * 獲取指定來源與目標之間的連線。
+   */
+  public getConnectionsBetween(sourceId: string, targetId: string): Connection | undefined {
+    return this.connections.find(c => c.sourceId === sourceId && c.targetId === targetId);
   }
 }

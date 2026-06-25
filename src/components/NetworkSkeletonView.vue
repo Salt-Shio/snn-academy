@@ -2,13 +2,23 @@
 import { computed } from 'vue';
 import type { VisualNetwork } from '../lib/snn/visual/core/VisualNetwork';
 import type { VisualNeuron } from '../lib/snn/visual/core/VisualNeuron';
+import type { VisualConnection } from '../lib/snn/visual/core/VisualConnection';
+import type { NetworkConfig } from './ParameterPanel.vue';
 
 const props = defineProps<{
   network: VisualNetwork;
+  config?: NetworkConfig | null;
 }>();
 
 // 將 Map 轉為 Array 方便 Vue 渲染
 const neurons = computed(() => Array.from(props.network.neurons.values()));
+const connections = computed(() => props.network.connections);
+
+// 當前模式快捷判斷
+const isALIF = computed(() => props.config?.neuronType === 'alif');
+const isCOBA = computed(() => props.config?.physicsModel === 'coba');
+const isSTP = computed(() => props.config?.synapseType === 'stp');
+const isSTDP = computed(() => props.config?.synapseType === 'stdp');
 
 // 單位 5: 綠線路徑計算
 const getDendriteLine = (neuron: VisualNeuron, dendrite: any) => {
@@ -42,6 +52,48 @@ const getNeuronStrokeColor = (neuron: VisualNeuron) => {
   const l = 35 + (55 - 35) * ratio;
   return `hsl(${h}, ${s}%, ${l}%)`;
 };
+
+// 連線顏色依 I_syn 強度
+const getConnectionColor = (conn: VisualConnection) => {
+  const absI = Math.abs(conn.iSyn);
+  if (absI < 0.01) return '#475569';
+  const intensity = Math.min(1, absI / 500);
+  const h = conn.iSyn > 0 ? 200 : 0; // 正=藍色, 負=紅色
+  const s = 60 + 30 * intensity;
+  const l = 30 + 25 * intensity;
+  return `hsl(${h}, ${s}%, ${l}%)`;
+};
+
+// 突觸標籤文字 (根據模式組合產生)
+const getSynapseLabel = (conn: VisualConnection): string => {
+  const parts: string[] = [];
+  parts.push(`I: ${conn.iSyn.toFixed(1)}`);
+
+  if (isCOBA.value) {
+    parts.push(`g: ${conn.signalStrength.toFixed(2)}`);
+    parts.push(`ΔV: ${conn.drivingForce.toFixed(1)}`);
+  }
+
+  if (isSTP.value) {
+    parts.push(`R: ${conn.stpR.toFixed(2)} u: ${conn.stpU.toFixed(2)}`);
+  }
+
+  if (isSTDP.value) {
+    parts.push(`w: ${conn.stdpWeight.toFixed(3)}`);
+    parts.push(`P: ${conn.stdpP.toFixed(3)} M: ${conn.stdpM.toFixed(3)}`);
+  }
+
+  return parts.join(' | ');
+};
+
+// 神經元額外標籤行數計算 (用於 y 偏移)
+const getNeuronExtraLines = (neuron: VisualNeuron): string[] => {
+  const lines: string[] = [];
+  if (isALIF.value) {
+    lines.push(`w_adapt: ${neuron.adaptationCurrent.toFixed(1)} pA`);
+  }
+  return lines;
+};
 </script>
 
 <template>
@@ -57,9 +109,10 @@ const getNeuronStrokeColor = (neuron: VisualNeuron) => {
           :y1="conn.startPoint.y"
           :x2="conn.endPoint.x" 
           :y2="conn.endPoint.y"
-          stroke="#475569" 
-          stroke-width="1.5"
+          :stroke="getConnectionColor(conn)" 
+          :stroke-width="Math.max(1.5, Math.min(3, Math.abs(conn.iSyn) / 200))"
           stroke-dasharray="4"
+          class="transition-all duration-150"
         />
 
         <!-- 單位 2: 紅直線 (軸突) -->
@@ -124,6 +177,67 @@ const getNeuronStrokeColor = (neuron: VisualNeuron) => {
           :class="['font-mono text-[8px] transition-colors', neuron.totalCurrent > 0 ? 'fill-amber-400 font-bold' : 'fill-slate-500']"
         >
           I: {{ neuron.totalCurrent.toFixed(1) }} pA
+        </text>
+
+        <!-- ALIF: 適應性電流 -->
+        <text
+          v-if="isALIF"
+          :x="neuron.cx"
+          :y="neuron.cy + neuron.soma.radius + 48"
+          text-anchor="middle"
+          :class="['font-mono text-[8px]', neuron.adaptationCurrent > 0.1 ? 'fill-red-400 font-bold' : 'fill-slate-600']"
+        >
+          w: {{ neuron.adaptationCurrent.toFixed(1) }} pA
+        </text>
+      </g>
+
+      <!-- ============ 突觸連線標籤 (在連線中點顯示) ============ -->
+      <g v-for="conn in connections" :key="conn.id" class="synapse-labels">
+        <!-- 背景色塊 -->
+        <rect
+          v-if="Math.abs(conn.iSyn) > 0.01 || isSTP || isSTDP"
+          :x="conn.getMidPoint().x - 60"
+          :y="conn.getMidPoint().y - 8"
+          width="120"
+          :height="isSTP || isSTDP ? 24 : 14"
+          rx="3"
+          fill="rgba(15, 23, 42, 0.85)"
+          stroke="rgba(255,255,255,0.05)"
+          stroke-width="0.5"
+        />
+
+        <!-- I_syn 行 -->
+        <text
+          v-if="Math.abs(conn.iSyn) > 0.01"
+          :x="conn.getMidPoint().x"
+          :y="conn.getMidPoint().y"
+          text-anchor="middle"
+          :class="['font-mono text-[7px]', conn.iSyn > 0 ? 'fill-sky-400' : 'fill-rose-400']"
+        >
+          I_syn: {{ conn.iSyn.toFixed(1) }} pA
+          <template v-if="isCOBA"> | ΔV: {{ conn.drivingForce.toFixed(1) }}</template>
+        </text>
+
+        <!-- STP 行 -->
+        <text
+          v-if="isSTP"
+          :x="conn.getMidPoint().x"
+          :y="conn.getMidPoint().y + 10"
+          text-anchor="middle"
+          class="font-mono text-[7px] fill-orange-300"
+        >
+          R: {{ conn.stpR.toFixed(2) }} | u: {{ conn.stpU.toFixed(2) }} | S: {{ conn.signalStrength.toFixed(1) }}
+        </text>
+
+        <!-- STDP 行 -->
+        <text
+          v-if="isSTDP"
+          :x="conn.getMidPoint().x"
+          :y="conn.getMidPoint().y + 10"
+          text-anchor="middle"
+          class="font-mono text-[7px] fill-purple-300"
+        >
+          w: {{ conn.stdpWeight.toFixed(3) }} | P: {{ conn.stdpP.toFixed(3) }} | M: {{ conn.stdpM.toFixed(3) }}
         </text>
       </g>
     </svg>

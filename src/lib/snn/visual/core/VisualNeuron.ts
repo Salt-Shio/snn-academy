@@ -8,6 +8,8 @@ export class VisualNeuron {
   public isSpiking: boolean = false;
   public voltage: number = -75;
   public totalCurrent: number = 0;
+  /** 適應性電流 (pA)，僅 ALIF 模式有意義 */
+  public adaptationCurrent: number = 0;
 
   // 5 個單位的核心組成
   public soma: IVisualSoma;                 // 單位 1: 大圓

@@ -87,4 +87,18 @@ export class STDPSynapse extends BaseSynapse implements ILearningRule {
     // M = M - A-
     this.M -= this.A_minus;
   }
+
+  /**
+   * 取得前級跡線值 (用於視覺化監控)
+   */
+  public getPreTrace(): number {
+    return this.P;
+  }
+
+  /**
+   * 取得後級跡線值 (用於視覺化監控)
+   */
+  public getPostTrace(): number {
+    return this.M;
+  }
 }
