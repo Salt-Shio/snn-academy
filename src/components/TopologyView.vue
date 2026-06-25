@@ -12,17 +12,8 @@ import MathDrawer from './MathDrawer.vue';
 const rawDocs = import.meta.glob('../docs/*.md', { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
 
 // 導入數學層
-import { SNNNetwork } from '../lib/snn/network/core/SNNNetwork';
-import { LIFNeuron } from '../lib/snn/neurons/LIFNeuron';
-import { ALIFNeuron } from '../lib/snn/neurons/ALIFNeuron';
-import { Connection } from '../lib/snn/network/core/Connection';
-import { CubaSynapse } from '../lib/snn/synapses/physics/CubaSynapse';
-import { CobaSynapse } from '../lib/snn/synapses/physics/CobaSynapse';
-import { StaticSynapse } from '../lib/snn/synapses/dynamics/StaticSynapse';
-import { STPSynapse } from '../lib/snn/synapses/dynamics/STPSynapse';
-import { STDPSynapse } from '../lib/snn/synapses/dynamics/STDPSynapse';
-import type { ISynapseDynamics } from '../lib/snn/synapses/interfaces/ISynapseDynamics';
-import type { ILearningRule } from '../lib/snn/synapses/interfaces/ILearningRule';
+import { SNNNetwork, Connection, createNeuron, createSynapseChain } from '../lib/snn/network';
+
 
 // --- 1. 初始化視覺網路 (3 Pre, 2 Post) ---
 const vNetwork = ref<VisualNetwork>(FeedforwardLayout.create3x2(100, 100, 450, 150));
@@ -52,68 +43,51 @@ const buildNetwork = (config: NetworkConfig) => {
   snn = new SNNNetwork();
   currentTime.value = 0;
 
-  // 組裝神經元參數
-  const neuronBase = {
-    V_th: config.neuron.V_th,
-    V_reset: config.neuron.V_reset,
-    V_L: config.neuron.V_L,
-    g_L: config.neuron.g_L,
-    C_m: config.neuron.C_m,
-    tref: config.neuron.tref,
-  };
 
   // 建立 Pre 節點
   for (let i = 0; i < 3; i++) {
-    const node = config.neuronType === 'alif'
-      ? new ALIFNeuron({ ...neuronBase, tau_w: config.alif.tau_w, b: config.alif.b })
-      : new LIFNeuron(neuronBase);
+    const node = createNeuron({
+      type: config.neuronType === 'alif' ? 'alif' : 'lif',
+      V_th: config.neuron.V_th,
+      V_reset: config.neuron.V_reset,
+      V_L: config.neuron.V_L,
+      g_L: config.neuron.g_L,
+      C_m: config.neuron.C_m,
+      tref: config.neuron.tref,
+      tau_w: config.alif.tau_w,
+      b: config.alif.b,
+    });
     snn.addNode(`pre-${i}`, node);
   }
 
   // 建立 Post 節點
   for (let j = 0; j < 2; j++) {
-    const node = config.neuronType === 'alif'
-      ? new ALIFNeuron({ ...neuronBase, tau_w: config.alif.tau_w, b: config.alif.b })
-      : new LIFNeuron(neuronBase);
+    const node = createNeuron({
+      type: config.neuronType === 'alif' ? 'alif' : 'lif',
+      V_th: config.neuron.V_th,
+      V_reset: config.neuron.V_reset,
+      V_L: config.neuron.V_L,
+      g_L: config.neuron.g_L,
+      C_m: config.neuron.C_m,
+      tref: config.neuron.tref,
+      tau_w: config.alif.tau_w,
+      b: config.alif.b,
+    });
     snn.addNode(`post-${j}`, node);
   }
 
   // 建立 All-to-All 連線
   for (let i = 0; i < 3; i++) {
     for (let j = 0; j < 2; j++) {
-      // 動態層
-      let dynamics: ISynapseDynamics;
-      let learningRule: ILearningRule | undefined = undefined;
-
-      if (config.synapseType === 'static') {
-        dynamics = new StaticSynapse(config.synapse.weight, config.synapse.tau_syn);
-      } else if (config.synapseType === 'stp') {
-        dynamics = new STPSynapse(
-          config.synapse.weight,
-          config.synapse.tau_syn,
-          config.stp.U0,
-          config.stp.tau_d,
-          config.stp.tau_f
-        );
-      } else {
-        const w_max = config.synapse.weight * 2;
-        const stdp = new STDPSynapse(
-          config.synapse.weight,
-          config.synapse.tau_syn,
-          config.stdp.A_plus,
-          config.stdp.A_minus,
-          config.stdp.tau_stdp,
-          w_max
-        );
-        dynamics = stdp;
-        learningRule = stdp;
-      }
-
-      // 物理層
-      const transmission = config.physicsModel === 'coba'
-        ? new CobaSynapse(dynamics, config.coba.V_E)
-        : new CubaSynapse(dynamics);
-
+      const { transmission, learningRule } = createSynapseChain({
+        dynamicsType: config.synapseType,
+        physicsModel: config.physicsModel,
+        weight: config.synapse.weight,
+        tauSyn: config.synapse.tau_syn,
+        stp: { U0: config.stp.U0, tau_d: config.stp.tau_d, tau_f: config.stp.tau_f },
+        stdp: { A_plus: config.stdp.A_plus, A_minus: config.stdp.A_minus, tau_stdp: config.stdp.tau_stdp },
+        cobaVE: config.coba.V_E,
+      });
       snn.addConnection(new Connection(`pre-${i}`, `post-${j}`, transmission, learningRule));
     }
   }

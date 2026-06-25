@@ -1,4 +1,5 @@
 import { BaseSynapse } from './BaseSynapse';
+import type { SynapseMonitorData } from '../interfaces/ISynapseMonitorData';
 
 /**
  * 具有短期可塑性 (STP) 的突觸。
@@ -65,5 +66,13 @@ export class STPSynapse extends BaseSynapse {
     }
 
     return this.signalStrength;
+  }
+
+  public override getMonitorData(): SynapseMonitorData {
+    return {
+      ...super.getMonitorData(),
+      stpR: this.R,
+      stpU: this.u,
+    };
   }
 }

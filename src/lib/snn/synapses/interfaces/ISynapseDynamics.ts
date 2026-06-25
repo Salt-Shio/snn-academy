@@ -1,3 +1,5 @@
+import type { SynapseMonitorData } from './ISynapseMonitorData';
+
 /**
  * 突觸時間動態介面。
  * 負責計算抽象訊號強度 S(t) 的衰減與增量。
@@ -11,6 +13,17 @@ export interface ISynapseDynamics {
    * @returns number 當前的抽象訊號強度 S(t)
    */
   step(dt: number, preSpike: boolean): number;
+
+  /**
+   * 取得當前的抽象訊號強度 S(t)
+   */
+  getSignalStrength(): number;
+
+  /**
+   * 取得供監控與視覺層使用的狀態快照。
+   * 各子類別可 override 以補充專屬欄位 (STP/STDP)。
+   */
+  getMonitorData(): SynapseMonitorData;
 
   /**
    * 重置內部動態變數

@@ -1,4 +1,5 @@
 import type { ISynapseDynamics } from '../interfaces/ISynapseDynamics';
+import type { SynapseMonitorData } from '../interfaces/ISynapseMonitorData';
 
 /**
  * 突觸抽象基礎類別，提供共通的權重與衰減管理。
@@ -42,6 +43,14 @@ export abstract class BaseSynapse implements ISynapseDynamics {
    */
   public getSignalStrength(): number {
     return this.signalStrength;
+  }
+
+  /**
+   * 取得供監控與視覺層使用的狀態快照。
+   * 子類別可 override 以補充專屬欄位。
+   */
+  public getMonitorData(): SynapseMonitorData {
+    return { signalStrength: this.signalStrength };
   }
 
   public abstract step(dt: number, preSpike: boolean): number;

@@ -1,30 +1,16 @@
 <script setup lang="ts">
 import { ref, onMounted, reactive, watch, nextTick } from 'vue';
-// 導入神經元
-import { LIFNeuron } from '../lib/snn/neurons/LIFNeuron';
-import { ALIFNeuron } from '../lib/snn/neurons/ALIFNeuron';
-import { GWNSource } from '../lib/snn/GWNSource';
+import { GWNSource } from '../lib/snn/sources';
+import { getVoltagePath, getCurrentPath, getWeightPath, getFIPath } from '../lib/snn/visual/utils/chartUtils';
 import { calculateCV_ISI, generateFICurve } from '../lib/snn/metrics';
 
-// 導入網路層 (核心)
-import { SNNNetwork } from '../lib/snn/network/core/SNNNetwork';
-import { Connection } from '../lib/snn/network/core/Connection';
-import { SpikeGeneratorNode } from '../lib/snn/network/core/SpikeGeneratorNode';
+// 導入網路層 (核心與監聽器)
+import { SNNNetwork, Connection, SpikeGeneratorNode, createNeuron, createSynapseChain, StateMonitor, SynapseMonitor } from '../lib/snn/network';
 
-// 導入監聽器
-import { StateMonitor } from '../lib/snn/network/monitors/StateMonitor';
-import { SynapseMonitor } from '../lib/snn/network/monitors/SynapseMonitor';
-
-// 導入突觸實作
-import { StaticSynapse } from '../lib/snn/synapses/dynamics/StaticSynapse';
-import { STPSynapse } from '../lib/snn/synapses/dynamics/STPSynapse';
-import { STDPSynapse } from '../lib/snn/synapses/dynamics/STDPSynapse';
-import { CobaSynapse } from '../lib/snn/synapses/physics/CobaSynapse';
-import { CubaSynapse } from '../lib/snn/synapses/physics/CubaSynapse';
-
-// 導入介面
-import type { ISynapseDynamics } from '../lib/snn/synapses/interfaces/ISynapseDynamics';
-import type { ILearningRule } from '../lib/snn/synapses/interfaces/ILearningRule';
+// 以下僅供 F-I 曲線計算使用 (generateFICurve 需要具體的 Class 與 Factory)
+import { LIFNeuron, ALIFNeuron } from '../lib/snn/neurons';
+import { CubaSynapse, CobaSynapse } from '../lib/snn/synapses';
+import type { ISynapseDynamics } from '../lib/snn/synapses';
 
 // KaTeX 樣式 (僅前端 UI 依賴)
 import 'katex/dist/katex.min.css';
@@ -131,48 +117,29 @@ const runSimulation = () => {
   network.addNode('source', sourceNode);
 
   // 2. 建立 Target 神經元
-  const targetNeuron = enableAdaptation.value
-    ? new ALIFNeuron({ ...params, ...alifParams } as any)
-    : new LIFNeuron({ ...params } as any);
+  const targetNeuron = createNeuron({
+    type: enableAdaptation.value ? 'alif' : 'lif',
+    V_th: params.V_th,
+    V_reset: params.V_reset,
+    V_L: params.V_L,
+    g_L: params.g_L,
+    C_m: params.C_m,
+    tref: params.tref,
+    tau_w: alifParams.tau_w,
+    b: alifParams.b,
+  });
   network.addNode('target', targetNeuron);
 
-  // 3. 建立突觸動態與學習規則
-  let dynamics: ISynapseDynamics;
-  let learningRule: ILearningRule | undefined = undefined;
-
-  if (synapseType.value === 'static') {
-    dynamics = new StaticSynapse(poissonPulseStrength.value, synapseParams.tau_syn);
-  } else if (synapseType.value === 'stp') {
-    dynamics = new STPSynapse(
-      poissonPulseStrength.value, 
-      synapseParams.tau_syn, 
-      stpParams.U0, 
-      stpParams.tau_d, 
-      stpParams.tau_f
-    );
-  } else {
-    // STDP 模式：修正單位失配問題
-    // w_max 應為初始權重的 2 倍，確保有足夠的成長空間
-    const w_max = poissonPulseStrength.value * 2;
-    
-    // 學習增量 A_plus/A_minus 應相對於 w_max，而非絕對數值
-    // 這樣不論是在 CUBA (pA) 還是 COBA (nS) 下，學習速率都能保持一致
-    const stdp = new STDPSynapse(
-      poissonPulseStrength.value,
-      synapseParams.tau_syn,
-      stdpParams.A_plus, 
-      stdpParams.A_minus,
-      stdpParams.tau_stdp,
-      w_max
-    );
-    dynamics = stdp;
-    learningRule = stdp;
-  }
-
-  // 套用物理轉換層裝飾器 (只包裝動態層)
-  const transmission = modelType.value === 'coba' 
-    ? new CobaSynapse(dynamics, cobaParams.V_E)
-    : new CubaSynapse(dynamics);
+  // 3. 建立突觸連線
+  const { transmission, learningRule } = createSynapseChain({
+    dynamicsType: synapseType.value,
+    physicsModel: modelType.value,
+    weight: poissonPulseStrength.value,
+    tauSyn: synapseParams.tau_syn,
+    stp: { U0: stpParams.U0, tau_d: stpParams.tau_d, tau_f: stpParams.tau_f },
+    stdp: { A_plus: stdpParams.A_plus, A_minus: stdpParams.A_minus, tau_stdp: stdpParams.tau_stdp },
+    cobaVE: cobaParams.V_E,
+  });
 
   // 4. 建立並註冊連線 (物理傳遞與學習規則路徑分離)
   network.addConnection(new Connection('source', 'target', transmission, learningRule));
@@ -218,52 +185,7 @@ const runSimulation = () => {
   cvISI.value = calculateCV_ISI(targetMonitor.spikeTimes);
 };
 
-// SVG 繪圖輔助
-const getVoltagePath = (data: number[]) => {
-  if (data.length === 0) return "0,200";
-  const width = 800;
-  const height = 200;
-  const stepX = width / data.length;
-  const scaleV = (v: number) => height - ((v + 85) / 90) * height;
-  return data.map((v, i) => `${(i * stepX).toFixed(2)},${scaleV(v).toFixed(2)}`).join(" L ");
-};
-
-const getCurrentPath = (data: number[]) => {
-  if (data.length === 0) return "0,60";
-  const width = 800;
-  const height = 60;
-  const stepX = width / data.length;
-  const maxI = data.reduce((max, val) => Math.max(max, val), 1000);
-  const scaleI = (i: number) => height - (i / maxI) * height;
-  return data.map((iVal, idx) => `${(idx * stepX).toFixed(2)},${scaleI(iVal).toFixed(2)}`).join(" L ");
-};
-
-const getWeightPath = (data: number[]) => {
-  if (data.length === 0) return "0,60";
-  const width = 400;
-  const height = 60;
-  const stepX = width / data.length;
-  // 動態尋找目前的權重邊界，若數據全為 0 則給予基礎範圍
-  const maxW = data.reduce((max, val) => Math.max(max, val), poissonPulseStrength.value * 2);
-  const minW = data.reduce((min, val) => Math.min(min, val), 0);
-  const range = (maxW - minW) || 1;
-  const scaleW = (w: number) => height - ((w - minW) / range) * height;
-  return data.map((w, i) => `${(i * stepX).toFixed(2)},${scaleW(w).toFixed(2)}`).join(" L ");
-};
-
-const getFIPath = (data: { current: number; freq: number }[]) => {
-  if (data.length === 0) return "0,120";
-  const width = 300;
-  const height = 120;
-  const maxI = modelType.value === 'cuba' ? 800 : 50; 
-  const maxF = data.reduce((max, d) => Math.max(max, d.freq), 100);
-  
-  return data.map(d => {
-    const x = (d.current / maxI) * width;
-    const y = height - (d.freq / maxF) * height;
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  }).join(" L ");
-};
+// SVG 繪圖輔助已移至 chartUtils.ts
 
 // 監聽變動
 watch([modelType, inputMode, constantInjection, poissonPulseStrength, poissonRate, noiseSigma, synapseType, synapseParams, stpParams, stdpParams, cubaParams, cobaParams, enableAdaptation, alifParams], () => {
@@ -286,7 +208,9 @@ watch([modelType, cubaParams, cobaParams, enableAdaptation, alifParams], () => {
         : new CubaSynapse(base);
     };
 
+    // 將 union constructor 直接斷言為 any 以繞過 TypeScript union signature 匹配限制
     fiCurveData.value = generateFICurve(NeuronClass as any, finalParams as any, iMax, 10, 1000, decoratorFactory);
+
     isCalculatingFI.value = false;
     nextTick(() => renderMath());
   }, 300);
@@ -455,7 +379,7 @@ onMounted(() => {
               <span class="text-[9px] text-purple-400 font-bold uppercase">Synaptic Weight Evolution</span>
               <div class="w-48 h-6 relative bg-black rounded">
                 <svg viewBox="0 0 400 60" preserveAspectRatio="none" class="w-full h-full">
-                  <path :d="'M ' + getWeightPath(weightHistory)" fill="none" stroke="#a855f7" stroke-width="2" />
+                  <path :d="'M ' + getWeightPath(weightHistory, poissonPulseStrength)" fill="none" stroke="#a855f7" stroke-width="2" />
                 </svg>
               </div>
            </div>
@@ -483,7 +407,7 @@ onMounted(() => {
           <h3 class="text-xs font-bold text-yellow-500 uppercase mb-2 tracking-widest">Effective Total Current (pA)</h3>
           <div class="h-20 relative bg-black rounded">
             <svg viewBox="0 0 800 60" preserveAspectRatio="none" class="w-full h-full">
-              <path :d="'M ' + getCurrentPath(currentHistory)" fill="none" stroke="#eab308" stroke-width="1.5" opacity="0.8" />
+              <path :d="'M ' + getCurrentPath(currentHistory)" fill="none" stroke="#eab308" stroke-width="2" class="transition-all duration-300" />
             </svg>
           </div>
         </div>
@@ -496,7 +420,7 @@ onMounted(() => {
              <div class="flex-1 h-32 relative bg-black/50 rounded border border-gray-800">
               <svg viewBox="0 0 300 120" preserveAspectRatio="none" class="w-full h-full">
                 <line x1="0" y1="60" x2="300" y2="60" stroke="#ffffff05" stroke-width="0.5" /><line x1="150" y1="0" x2="150" y2="120" stroke="#ffffff05" stroke-width="0.5" />
-                <path :d="'M ' + getFIPath(fiCurveData)" fill="none" stroke="#10b981" stroke-width="2.5" />
+                <path :d="'M ' + getFIPath(fiCurveData, modelType === 'cuba' ? 800 : 50)" fill="none" stroke="#ef4444" stroke-width="3" />
               </svg>
             </div>
             <div class="w-24 flex flex-col justify-center space-y-4" ref="analysisPanel">

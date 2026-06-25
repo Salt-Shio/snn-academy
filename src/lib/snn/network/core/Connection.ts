@@ -40,4 +40,17 @@ export class Connection {
     this.transmission = transmission;
     this.learningRule = learningRule;
   }
+
+  /**
+   * 重置連線中所有可變狀態。
+   * transmission.reset() 會連帶重置內部動態層。
+   * learningRule.reset() 是冪等操作 — 即使與動態層為同一實例也不會產生副作用。
+   */
+  public resetAll(): void {
+    this.transmission.reset();
+    this.learningRule?.reset();
+    this.lastISyn = 0;
+    this.lastDrivingForce = 0;
+  }
 }
+

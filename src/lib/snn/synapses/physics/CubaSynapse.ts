@@ -23,7 +23,12 @@ export class CubaSynapse implements ISynapsePhysics {
     return s;
   }
 
+  public getDynamics(): ISynapseDynamics {
+    return this.dynamics;
+  }
+
   public reset(): void {
     this.dynamics.reset();
   }
 }
+

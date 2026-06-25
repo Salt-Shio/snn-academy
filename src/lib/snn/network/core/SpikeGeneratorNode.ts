@@ -1,5 +1,5 @@
 import type { INetworkNode } from './INetworkNode';
-import { PoissonSource } from '../../PoissonSource';
+import { PoissonSource } from '../../sources';
 
 /**
  * 純脈衝產生器節點。

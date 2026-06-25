@@ -1,7 +1,6 @@
 import type { INetworkNode } from './INetworkNode';
 import type { Connection } from './Connection';
 import type { ISynapsePhysics } from '../../synapses/interfaces/ISynapsePhysics';
-import { CobaSynapse } from '../../synapses/physics/CobaSynapse';
 
 export type StepCallback = (time: number, network: SNNNetwork) => void;
 
@@ -49,14 +48,7 @@ export class SNNNetwork {
    */
   public reset(): void {
     this.nodes.forEach(node => node.reset());
-    this.connections.forEach(conn => {
-      conn.transmission.reset();
-      // 注意：learningRule 可能與 transmission 共用同一個實體 (如 STDPSynapse)，所以可能已被 reset 過
-      // 這裡做個簡單判斷或重複 reset 亦可
-      if (conn.learningRule && (conn.learningRule as any) !== (conn.transmission as any)) {
-        (conn.learningRule as any).reset?.();
-      }
-    });
+    this.connections.forEach(conn => conn.resetAll());
     this.nodes.forEach((_, id) => this.inputBuffer.set(id, 0));
   }
 
@@ -95,9 +87,7 @@ export class SNNNetwork {
 
       // 紀錄即時突觸資訊供視覺層同步
       conn.lastISyn = i_syn;
-      if (conn.transmission instanceof CobaSynapse) {
-        conn.lastDrivingForce = postV - conn.transmission.vRev;
-      }
+      conn.lastDrivingForce = conn.transmission.getLastDrivingForce?.() ?? 0;
 
       // 將電流累加進 Target 的緩衝區
       const currentVal = this.inputBuffer.get(conn.targetId) || 0;
@@ -151,3 +141,4 @@ export class SNNNetwork {
     return this.connections.find(c => c.sourceId === sourceId && c.targetId === targetId);
   }
 }
+

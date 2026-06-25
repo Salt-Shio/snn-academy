@@ -1,5 +1,6 @@
 import { BaseSynapse } from './BaseSynapse';
 import type { ILearningRule } from '../interfaces/ILearningRule';
+import type { SynapseMonitorData } from '../interfaces/ISynapseMonitorData';
 
 /**
  * 具備脈衝時序依賴可塑性 (STDP) 的突觸動態類別。
@@ -100,5 +101,14 @@ export class STDPSynapse extends BaseSynapse implements ILearningRule {
    */
   public getPostTrace(): number {
     return this.M;
+  }
+
+  public override getMonitorData(): SynapseMonitorData {
+    return {
+      ...super.getMonitorData(),
+      stdpWeight: this.currentWeight,
+      stdpPreTrace: this.P,
+      stdpPostTrace: this.M,
+    };
   }
 }

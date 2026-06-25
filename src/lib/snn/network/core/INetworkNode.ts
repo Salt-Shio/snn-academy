@@ -22,6 +22,12 @@ export interface INetworkNode {
   getTotalCurrent(): number;
 
   /**
+   * 取得適應性電流 (pA)。
+   * 僅具備適應性機制的模型 (如 ALIF) 實作此方法。
+   */
+  getAdaptationCurrent?(): number;
+
+  /**
    * 推進一個時間步長。
    * @param dt 時間步長 (ms)
    * @param time 當前模擬時間 (ms)
@@ -36,3 +42,4 @@ export interface INetworkNode {
    */
   reset(): void;
 }
+

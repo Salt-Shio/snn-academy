@@ -8,6 +8,7 @@ import type { ISynapseDynamics } from '../interfaces/ISynapseDynamics';
 export class CobaSynapse implements ISynapsePhysics {
   public dynamics: ISynapseDynamics;
   public vRev: number;
+  private lastDrivingForce: number = 0;
 
   /**
    * @param dynamics 被包裝的動態層實體 (產出電導)
@@ -25,11 +26,24 @@ export class CobaSynapse implements ISynapsePhysics {
     // 1. 從動態層獲取電導強度 S(t)
     const g = this.dynamics.step(dt, preSpike);
 
-    // 2. 套用歐姆定律: I = -g * (V - V_rev)
-    return -g * (postVoltage - this.vRev);
+    // 2. 記錄驅動力供監控層存取
+    this.lastDrivingForce = postVoltage - this.vRev;
+
+    // 3. 套用歐姆定律: I = -g * (V - V_rev)
+    return -g * this.lastDrivingForce;
+  }
+
+  public getDynamics(): ISynapseDynamics {
+    return this.dynamics;
+  }
+
+  public getLastDrivingForce(): number {
+    return this.lastDrivingForce;
   }
 
   public reset(): void {
     this.dynamics.reset();
+    this.lastDrivingForce = 0;
   }
 }
+

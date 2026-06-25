@@ -8,4 +8,10 @@ export interface ILearningRule {
    * 用於實作 LTP 等需要後級反饋的學習邏輯。
    */
   onPostSpike(): void;
+
+  /**
+   * 重置學習規則的內部狀態。
+   */
+  reset(): void;
 }
+

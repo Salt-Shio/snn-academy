@@ -1,9 +1,9 @@
 import type { SNNNetwork } from '../core/SNNNetwork';
-import { STDPSynapse } from '../../synapses/dynamics/STDPSynapse';
 
 /**
  * 突觸監聽器。
  * 專門用於監聽網路連線中的動態權重變化。
+ * 透過 ISynapsePhysics.getDynamics().getMonitorData() 介面存取，不依賴具體類別。
  */
 export class SynapseMonitor {
   public wHistory: number[] = [];
@@ -23,13 +23,11 @@ export class SynapseMonitor {
     const physicsSynapse = net.getSynapse(this.sourceId, this.targetId);
     if (!physicsSynapse) return;
 
-    // 由於我們採用組合架構，物理裝飾器內部持有 dynamics
-    // 我們需要進去拿 dynamics 實體來檢查是否為 STDPSynapse
-    // 這裡我們假設裝飾器會暴露一個 dynamics 屬性 (我們需要去補上)
-    const dynamics = (physicsSynapse as any).dynamics;
-    
-    if (dynamics instanceof STDPSynapse) {
-      this.wHistory.push(dynamics.getWeight());
+    // 透過介面取得動態層的監控快照
+    const monitorData = physicsSynapse.getDynamics().getMonitorData();
+
+    if (monitorData.stdpWeight !== undefined) {
+      this.wHistory.push(monitorData.stdpWeight);
     }
   }
 
@@ -37,3 +35,4 @@ export class SynapseMonitor {
     this.wHistory = [];
   }
 }
+
