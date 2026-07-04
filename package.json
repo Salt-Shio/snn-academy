@@ -4,30 +4,25 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vue-tsc -b && vite build",
-    "preview": "vite preview"
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vue-tsc -b && vitepress build docs",
+    "docs:preview": "vitepress preview docs",
+    "dev": "npm run docs:dev",
+    "build": "npm run docs:build",
+    "preview": "npm run docs:preview"
   },
   "dependencies": {
-    "@tailwindcss/vite": "^4.3.0",
     "d3": "^7.9.0",
     "katex": "^0.17.0",
-    "lucide-vue-next": "^1.0.0",
-    "markdown-it": "^14.2.0",
     "markdown-it-texmath": "^1.0.0",
     "mathjs": "^15.2.0",
     "vue": "^3.5.34"
   },
   "devDependencies": {
-    "@types/markdown-it": "^14.1.2",
     "@types/node": "^24.12.3",
-    "@vitejs/plugin-vue": "^6.0.6",
     "@vue/tsconfig": "^0.9.1",
-    "autoprefixer": "^10.5.0",
-    "postcss": "^8.5.15",
-    "tailwindcss": "^4.3.0",
     "typescript": "~6.0.2",
-    "vite": "^8.0.12",
+    "vitepress": "^1.6.4",
     "vue-tsc": "^3.2.8"
   },
   "overrides": {
