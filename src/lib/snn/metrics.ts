@@ -1,5 +1,4 @@
-import { CubaSynapse } from './synapses';
-import type { ISynapsePhysics, ISynapseDynamics } from './synapses';
+import type { ISynapseDynamics } from './synapses';
 
 /**
  * 計算放電變異係數 (Coefficient of Variation of Inter-Spike Intervals)
@@ -23,34 +22,36 @@ export function calculateCV_ISI(spikeTimes: number[]): number {
   return stdDev / mean;
 }
 
-import type { INetworkNode } from './network/core/INetworkNode';
+
+import { createNeuron, createPhysicsDecorator, type NeuronFactoryConfig, type PhysicsModel } from './network';
 
 /**
  * 產生 F-I 曲線 (頻率-電流響應曲線)
  * 模擬在不同持續性輸入強度下，神經元的放電頻率。
  *
- * @param NeuronClass 神經元類別 (需繼承或實作 INetworkNode)
- * @param params 神經元基礎參數
+ * @param neuronConfig 神經元建構配置
+ * @param physicsModel 突觸物理層類型 (cuba | coba)
+ * @param cobaVE COBA 模式專用的興奮性反轉電位
  * @param iMax 最大掃描強度 (CUBA: pA, COBA: nS)
  * @param iStep 強度步長
  * @param duration 每個取樣點的模擬時長 (ms)，預設 1000ms
- * @param decoratorFactory 物理轉換層裝飾器工廠，將穩態訊號 S 轉換為物理等效電流 I_syn
  * @returns 包含強度與頻率的資料陣列
  */
-export function generateFICurve<P extends { V_L: number; C_m: number }>(
-  NeuronClass: new (params: P) => INetworkNode,
-  params: P,
+export function generateFICurve(
+  neuronConfig: NeuronFactoryConfig,
+  physicsModel: PhysicsModel,
+  cobaVE: number = 0,
   iMax: number = 800,
   iStep: number = 10,
-  duration: number = 1000,
-  decoratorFactory: (base: ISynapseDynamics) => ISynapsePhysics = (base) => new CubaSynapse(base)
+  duration: number = 1000
 ): { current: number; freq: number }[] {
   const results: { current: number; freq: number }[] = [];
   const dt = 0.1;
   const steps = duration / dt;
 
   for (let i = 0; i <= iMax; i += iStep) {
-    const tempNeuron = new NeuronClass(params);
+    // 透過工廠建立測試用的神經元
+    const tempNeuron = createNeuron(neuronConfig);
     
     // 建立一個假的基礎突觸，永遠輸出恆定的穩態訊號強度 i (即 S)
     const dummyBase: ISynapseDynamics = {
@@ -61,7 +62,7 @@ export function generateFICurve<P extends { V_L: number; C_m: number }>(
     };
     
     // 透過工廠函數套用對應的物理轉換層裝飾器 (CUBA 或 COBA)
-    const physicsSynapse = decoratorFactory(dummyBase);
+    const physicsSynapse = createPhysicsDecorator(dummyBase, physicsModel, cobaVE);
 
     let spikeCount = 0;
 

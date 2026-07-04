@@ -1,16 +1,8 @@
 import type { INetworkNode } from './core/INetworkNode';
-import type { ISynapsePhysics } from '../synapses/interfaces/ISynapsePhysics';
-import type { ISynapseDynamics } from '../synapses/interfaces/ISynapseDynamics';
-import type { ILearningRule } from '../synapses/interfaces/ILearningRule';
-
-import { LIFNeuron, type LIFParams } from '../neurons/LIFNeuron';
-import { ALIFNeuron, type ALIFParams } from '../neurons/ALIFNeuron';
-
-import { StaticSynapse } from '../synapses/dynamics/StaticSynapse';
-import { STPSynapse } from '../synapses/dynamics/STPSynapse';
-import { STDPSynapse } from '../synapses/dynamics/STDPSynapse';
-import { CubaSynapse } from '../synapses/physics/CubaSynapse';
-import { CobaSynapse } from '../synapses/physics/CobaSynapse';
+import { SpikeGeneratorNode } from './core/SpikeGeneratorNode';
+import type { ISynapsePhysics, ISynapseDynamics, ILearningRule } from '../synapses';
+import { LIFNeuron, type LIFParams, ALIFNeuron, type ALIFParams } from '../neurons';
+import { StaticSynapse, STPSynapse, STDPSynapse, CubaSynapse, CobaSynapse } from '../synapses';
 
 // ─── 配置型別 ───
 
@@ -106,9 +98,27 @@ export function createSynapseChain(config: SynapseFactoryConfig): {
   }
 
   // 2. 套用物理轉換層裝飾器
-  const transmission = config.physicsModel === 'coba'
-    ? new CobaSynapse(dynamics, config.cobaVE ?? 0)
-    : new CubaSynapse(dynamics);
+  const transmission = createPhysicsDecorator(dynamics, config.physicsModel, config.cobaVE);
 
   return { transmission, learningRule };
+}
+
+/**
+ * 建立脈衝產生器節點 (訊號源)
+ */
+export function createSourceNode(rate: number): SpikeGeneratorNode {
+  return new SpikeGeneratorNode(rate);
+}
+
+/**
+ * 套用突觸物理層裝飾器，將動態層的訊號 S(t) 轉換為物理電流 I_syn
+ */
+export function createPhysicsDecorator(
+  base: ISynapseDynamics,
+  model: PhysicsModel,
+  cobaVE?: number
+): ISynapsePhysics {
+  return model === 'coba'
+    ? new CobaSynapse(base, cobaVE ?? 0)
+    : new CubaSynapse(base);
 }

@@ -94,6 +94,14 @@ const modeLabel = computed(() => {
   return `${n} + ${p} + ${s}`;
 });
 
+// 處理物理模型切換，同步調整權重預設值尺度，避免 Vue range input 競態問題
+function setPhysicsModel(model: PhysicsModel) {
+  if (config.physicsModel !== model) {
+    config.physicsModel = model;
+    config.synapse.weight = model === 'cuba' ? 1500 : 15;
+  }
+}
+
 // 監聽全部配置變更
 watch(config, () => {
   emit('config-change', { ...config });
@@ -132,8 +140,8 @@ watch(config, () => {
         </button>
       </div>
       <div class="grid grid-cols-2 p-1 bg-slate-900 rounded-lg gap-1">
-        <button @click="config.physicsModel = 'cuba'" :class="config.physicsModel === 'cuba' ? 'py-1.5 rounded-md font-bold transition-all text-[10px] uppercase tracking-wider bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'py-1.5 rounded-md font-bold transition-all text-[10px] uppercase tracking-wider text-slate-500 hover:text-slate-300'">CUBA</button>
-        <button @click="config.physicsModel = 'coba'" :class="config.physicsModel === 'coba' ? 'py-1.5 rounded-md font-bold transition-all text-[10px] uppercase tracking-wider bg-emerald-600 text-white shadow-lg shadow-emerald-500/20' : 'py-1.5 rounded-md font-bold transition-all text-[10px] uppercase tracking-wider text-slate-500 hover:text-slate-300'">COBA</button>
+        <button @click="setPhysicsModel('cuba')" :class="config.physicsModel === 'cuba' ? 'py-1.5 rounded-md font-bold transition-all text-[10px] uppercase tracking-wider bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'py-1.5 rounded-md font-bold transition-all text-[10px] uppercase tracking-wider text-slate-500 hover:text-slate-300'">CUBA</button>
+        <button @click="setPhysicsModel('coba')" :class="config.physicsModel === 'coba' ? 'py-1.5 rounded-md font-bold transition-all text-[10px] uppercase tracking-wider bg-emerald-600 text-white shadow-lg shadow-emerald-500/20' : 'py-1.5 rounded-md font-bold transition-all text-[10px] uppercase tracking-wider text-slate-500 hover:text-slate-300'">COBA</button>
       </div>
 
       <div class="flex items-center justify-between mt-2">
@@ -258,7 +266,7 @@ watch(config, () => {
           <span>Weight (w)</span>
           <span class="text-orange-400">{{ config.synapse.weight }} {{ weightUnit }}</span>
         </div>
-        <input type="range" v-model.number="config.synapse.weight" :min="config.physicsModel === 'cuba' ? 100 : 1" :max="config.physicsModel === 'cuba' ? 5000 : 100" :step="config.physicsModel === 'cuba' ? 100 : 1" class="w-full accent-orange-500" />
+        <input :key="'weight-' + config.physicsModel" type="range" v-model.number="config.synapse.weight" :min="config.physicsModel === 'cuba' ? 100 : 1" :max="config.physicsModel === 'cuba' ? 5000 : 100" :step="config.physicsModel === 'cuba' ? 100 : 1" class="w-full accent-orange-500" />
       </div>
 
       <!-- τ_syn -->

@@ -5,12 +5,7 @@ import { getVoltagePath, getCurrentPath, getWeightPath, getFIPath } from '../lib
 import { calculateCV_ISI, generateFICurve } from '../lib/snn/metrics';
 
 // 導入網路層 (核心與監聽器)
-import { SNNNetwork, Connection, SpikeGeneratorNode, createNeuron, createSynapseChain, StateMonitor, SynapseMonitor } from '../lib/snn/network';
-
-// 以下僅供 F-I 曲線計算使用 (generateFICurve 需要具體的 Class 與 Factory)
-import { LIFNeuron, ALIFNeuron } from '../lib/snn/neurons';
-import { CubaSynapse, CobaSynapse } from '../lib/snn/synapses';
-import type { ISynapseDynamics } from '../lib/snn/synapses';
+import { SNNNetwork, Connection, createSourceNode, createNeuron, createSynapseChain, StateMonitor, SynapseMonitor, type NeuronFactoryConfig } from '../lib/snn/network';
 
 // KaTeX 樣式 (僅前端 UI 依賴)
 import 'katex/dist/katex.min.css';
@@ -45,7 +40,12 @@ const synapseType = ref<SynapseType>('static');
 
 // --- 共享參數 ---
 const constantInjection = ref(250);      // pA (外部注入電流)
-const poissonPulseStrength = ref(15);    // 共享數值 (CUBA: pA, COBA: nS)
+const poissonPulseStrength = ref(1500);    // 共享數值 (CUBA: pA, COBA: nS)
+
+// 當模型切換時，自動調整權重的合理預設值與尺度
+watch(modelType, (newModel) => {
+  poissonPulseStrength.value = newModel === 'cuba' ? 1500 : 15;
+});
 const poissonRate = ref(50);             // Hz
 const noiseSigma = ref(0);               // 雜訊強度 (mV)
 
@@ -113,7 +113,7 @@ const runSimulation = () => {
   const params = modelType.value === 'cuba' ? cubaParams : cobaParams;
 
   // 1. 建立 Source 節點
-  const sourceNode = new SpikeGeneratorNode(poissonRate.value);
+  const sourceNode = createSourceNode(poissonRate.value);
   network.addNode('source', sourceNode);
 
   // 2. 建立 Target 神經元
@@ -199,17 +199,14 @@ watch([modelType, cubaParams, cobaParams, enableAdaptation, alifParams], () => {
   fiTimeout = window.setTimeout(() => {
     const params = modelType.value === 'cuba' ? cubaParams : cobaParams;
     const iMax = modelType.value === 'cuba' ? 800 : 50;
-    const NeuronClass = enableAdaptation.value ? ALIFNeuron : LIFNeuron;
     const finalParams = enableAdaptation.value ? { ...params, ...alifParams } : params;
     
-    const decoratorFactory = (base: ISynapseDynamics) => {
-      return modelType.value === 'coba'
-        ? new CobaSynapse(base, cobaParams.V_E)
-        : new CubaSynapse(base);
+    const neuronConfig: NeuronFactoryConfig = {
+      type: enableAdaptation.value ? 'alif' : 'lif',
+      ...finalParams
     };
 
-    // 將 union constructor 直接斷言為 any 以繞過 TypeScript union signature 匹配限制
-    fiCurveData.value = generateFICurve(NeuronClass as any, finalParams as any, iMax, 10, 1000, decoratorFactory);
+    fiCurveData.value = generateFICurve(neuronConfig, modelType.value, cobaParams.V_E, iMax, 10, 1000);
 
     isCalculatingFI.value = false;
     nextTick(() => renderMath());
