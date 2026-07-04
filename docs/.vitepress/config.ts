@@ -23,16 +23,26 @@ export default defineConfig({
   themeConfig: {
     nav: [
       { text: 'Home', link: '/' },
+      { text: 'LIF Neuron', link: '/lif-neuron/biological' },
       { text: 'Example', link: '/example/formula-demo' },
       { text: 'Playground', link: '/playground/second-category' }
-      // 之後新增分類時，在這裡多加一個 { text, link }，
-      // link 指到該分類底下隨便一篇頁面即可（通常是該分類第一篇）。
+      // 之後新增主題時，在這裡多加一個 { text, link }，
+      // link 指到該主題底下隨便一篇頁面即可（通常是生物視角那篇）。
     ],
-    // 側邊欄依「網址前綴」分組：瀏覽 /example/* 底下的頁面時，
-    // 只會顯示 '/example/' 這組清單，不會混進其他分類（/playground/ 亦然）。
-    // 新增分類時，比照下面任一組的寫法，用該分類的路徑前綴當 key，
-    // 整組複製貼上再改內容即可。
+    // 側邊欄依「網址前綴」分組：瀏覽 /lif-neuron/* 底下的頁面時，
+    // 只會顯示 '/lif-neuron/' 這組清單，不會混進其他主題/分類。
+    // 新增主題時，比照 '/lif-neuron/' 這組的寫法，用該主題的路徑前綴當 key，
+    // 整組複製貼上再改內容即可（三階段順序固定：生物 → 電路 → 數學）。
     sidebar: {
+      '/lif-neuron/': [
+        {
+          text: 'LIF Neuron', items: [
+            { text: '生物視角', link: '/lif-neuron/biological' },
+            { text: '電路視角', link: '/lif-neuron/circuit' },
+            { text: '數學模型', link: '/lif-neuron/math' }
+          ]
+        }
+      ],
       '/example/': [
         {
           text: 'Example', items: [
