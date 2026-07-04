@@ -12,16 +12,17 @@
 *   **`BasicLIFSandbox.vue`**: 系統中樞。負責管理 Vue 響應式狀態、建立 `SNNNetwork` 拓撲，並觸發模擬與繪圖。
 
 ### II. Network & Monitoring Layer (網路、核心與監控)
+*   **`network/NetworkFactory.ts`**: 工廠類別。集中實作神經網路拓撲的組裝邏輯，實踐 DRY 原則，降低 UI 層的耦合度。
 *   **`core/SNNNetwork.ts`**: 全局協調者。執行「正向路由（物理）」與「反向路由（學習）」雙階段演算法，並廣播模擬事件。
 *   **`core/Connection.ts`**: **職責平行化**。持有獨立的 `transmission` (物理) 與 `learningRule` (學習) 通道。
 *   **`monitors/`**: 包含 `StateMonitor` 與 `SynapseMonitor`。掛載於網路 Hook，實現資料非侵入式採集。
 
 ### III. Neuron & Source Layer (節點與訊號源)
 *   **`LIFNeuron.ts` / `ALIFNeuron.ts`**: 實作 $dV/dt$ 積分與發火邏輯，具備「自我感知」電流的能力。
-*   **`SpikeGeneratorNode.ts`**: 輕量級 Poisson 脈衝產生器。
+*   **`sources/`**: 包含 `SpikeGeneratorNode` 輕量級脈衝產生器，以及 `PoissonSource` / `GWNSource` 等訊號源工具。
 
 ### IV. Synapse Module (突觸三權分立)
-*   **`interfaces/`**: 定義 `ISynapseDynamics` (動態), `ISynapsePhysics` (物理), `ILearningRule` (學習) 三大原子介面。
+*   **`interfaces/`**: 定義 `ISynapseDynamics` (動態), `ISynapsePhysics` (物理), `ILearningRule` (學習) 三大核心原子介面，以及用於狀態快照的 `ISynapseMonitorData` 介面。
 *   **`dynamics/`**: 計算訊號強度 $S(t)$（如 Static, STP, STDP）。
 *   **`physics/`**: 物理裝飾器。將 $S(t)$ 轉為 $I_{syn}$（如 Cuba, Coba）。**物理層完全不感知學習層的存在。**
 
@@ -33,93 +34,122 @@
 classDiagram
     direction TB
 
-    %% 第一層：抽象介面層 (The Foundations)
-    class INetworkNode {
-        <<interface>>
-        +hasSpiked boolean
-        +getVoltage() number
-        +getTotalCurrent() number
-        +step(dt, t, syn, ext)
-    }
-    class ISynapseDynamics {
-        <<interface>>
-        +step(dt, preSpike) number
-    }
-    class ISynapsePhysics {
-        <<interface>>
-        +getEquivalentCurrent(dt, pre, v) number
-    }
-    class ILearningRule {
-        <<interface>>
-        +onPostSpike() void
+    namespace Network_And_Core {
+        class NetworkFactory {
+            +createNeuron() INetworkNode
+            +createSynapseChain()
+        }
+        class SNNNetwork {
+            -nodes Map
+            -connections Connection[]
+            +step(dt, time)
+        }
+        class Connection {
+            +transmission ISynapsePhysics
+            +learningRule ILearningRule
+        }
     }
 
-    %% 第二層：核心架構層 (Depends on Interfaces)
-    class SNNNetwork {
-        -nodes Map
-        -connections Connection[]
-        +step(dt, time)
-    }
-    class Connection {
-        +transmission ISynapsePhysics
-        +learningRule ILearningRule
-    }
-    class StateMonitor {
-        -record(time, network)
-    }
-    class SynapseMonitor {
-        -record(network)
+    namespace Monitoring_Layer {
+        class StateMonitor {
+            -record(time, network)
+        }
+        class SynapseMonitor {
+            -record(network)
+        }
     }
 
-    %% 第三層：具體實作層 (Satisfies Interfaces)
-    class LIFNeuron {
-        #v number
-        #current_i number
+    namespace Neuron_And_Source {
+        class INetworkNode {
+            <<interface>>
+            +hasSpiked boolean
+            +getVoltage() number
+            +getTotalCurrent() number
+            +step(dt, t, syn, ext)
+        }
+        class LIFNeuron {
+            #v number
+            #current_i number
+        }
+        class ALIFNeuron {
+            -w number
+        }
+        class SpikeGeneratorNode {
+            +hasSpiked boolean
+        }
     }
-    class ALIFNeuron {
-        -w number
-    }
-    class SpikeGeneratorNode {
-        +hasSpiked boolean
-    }
-    class BaseSynapse {
-        <<abstract>>
-        #signalStrength number
-    }
-    class StaticSynapse
-    class STPSynapse
-    class STDPSynapse
-    class CubaSynapse
-    class CobaSynapse
 
-    %% --- 建立關係 (由實作指向抽象) ---
+    namespace Synapse_Interfaces {
+        class ISynapsePhysics {
+            <<interface>>
+            +getEquivalentCurrent(dt, pre, v) number
+            +getDynamics() ISynapseDynamics
+        }
+        class ISynapseDynamics {
+            <<interface>>
+            +step(dt, preSpike) number
+            +getMonitorData() ISynapseMonitorData
+        }
+        class ILearningRule {
+            <<interface>>
+            +onPostSpike() void
+        }
+        class ISynapseMonitorData {
+            <<interface>>
+            +signalStrength number
+        }
+    }
 
-    %% Node 體系
+    namespace Synapse_Physics {
+        class CubaSynapse
+        class CobaSynapse
+    }
+
+    namespace Synapse_Dynamics {
+        class BaseSynapse {
+            <<abstract>>
+            #signalStrength number
+        }
+        class StaticSynapse
+        class STPSynapse
+        class STDPSynapse
+    }
+
+    %% 核心與監控層依賴
+    SNNNetwork "1" *-- "many" Connection : manages
+    SNNNetwork "1" *-- "many" INetworkNode : coordinates
+    NetworkFactory ..> INetworkNode : creates
+    NetworkFactory ..> ISynapsePhysics : creates
+    NetworkFactory ..> ILearningRule : creates
+
+    StateMonitor ..> INetworkNode : pulls data
+    SynapseMonitor ..> ISynapseDynamics : pulls monitor data
+    SynapseMonitor ..> ISynapseMonitorData : uses
+
+    Connection "1" o-- "1" ISynapsePhysics : transmission
+    Connection "1" o-- "0..1" ILearningRule : learning
+
+    %% 節點實作
     INetworkNode <|.. LIFNeuron : implements
     INetworkNode <|.. SpikeGeneratorNode : implements
     LIFNeuron <|-- ALIFNeuron : extends
 
-    %% Synapse Dynamics 體系
+    %% 突觸物理層
+    ISynapsePhysics <|.. CubaSynapse : implements
+    ISynapsePhysics <|.. CobaSynapse : implements
+
+    %% 突觸動態層
     ISynapseDynamics <|.. BaseSynapse : implements
     BaseSynapse <|-- StaticSynapse : extends
     BaseSynapse <|-- STPSynapse : extends
     BaseSynapse <|-- STDPSynapse : extends
+
+    %% 學習規則
     ILearningRule <|.. STDPSynapse : implements
 
-    %% Synapse Physics 體系
-    ISynapsePhysics <|.. CubaSynapse : implements
-    ISynapsePhysics <|.. CobaSynapse : implements
-
-    %% 組合與依賴
-    SNNNetwork "1" *-- "many" Connection : manages
-    SNNNetwork "1" *-- "many" INetworkNode : coordinates
-    Connection "1" o-- "1" ISynapsePhysics : transmission
-    Connection "1" o-- "0..1" ILearningRule : learning
-    CubaSynapse o-- ISynapseDynamics : decorates
-    CobaSynapse o-- ISynapseDynamics : decorates
-    
-    StateMonitor ..> INetworkNode : pulls data
-    SynapseMonitor ..> STDPSynapse : pulls weight
+    %% 物理層包裝動態層 (Physics decorates Dynamics)
+    ISynapseDynamics --o CubaSynapse : decorates
+    ISynapseDynamics --o CobaSynapse : decorates
 ```
 
 ---
@@ -165,5 +195,6 @@ sequenceDiagram
     rect rgb(30, 40, 30)
     Note over Net, UI: 4. 監聽廣播 (Monitoring)
     Net->>UI: 廣播 postStep 事件 -> Monitor 採集資料渲染
+    Note over Net, UI: Monitor 透過 getMonitorData() 取值，不破壞封裝
     end
 ```
