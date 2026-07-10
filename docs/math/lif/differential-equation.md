@@ -1,6 +1,6 @@
-# LIF 神經元：數學模型
+# LIF：微分方程
 
-> 待撰寫（改寫自 `dev/math/CUBA_LIF.md`，語氣需教學向，不可直接照搬開發者筆記）。目標：從[電路視角](./circuit.md)的基爾霍夫定律，推導出 Leaky Integrate-and-Fire 的微分方程。
+> 待撰寫（改寫自 `dev/math/CUBA_LIF.md`，語氣需教學向，不可直接照搬開發者筆記）。目標：從[等效電路的概念](./circuit-concept.md)的基爾霍夫定律，推導出 Leaky Integrate-and-Fire 的微分方程。
 
 ## 膜電位微分方程
 

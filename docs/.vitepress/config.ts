@@ -23,23 +23,43 @@ export default defineConfig({
   themeConfig: {
     nav: [
       { text: 'Home', link: '/' },
-      { text: 'LIF Neuron', link: '/lif-neuron/biological' },
+      { text: '生物', link: '/biological/neuron-cell' },
+      { text: '電路', link: '/circuit/equivalent-circuit' },
+      { text: '數學', link: '/math/lif/biological-concept' },
       { text: 'Example', link: '/example/formula-demo' },
       { text: 'Playground', link: '/playground/second-category' }
-      // 之後新增主題時，在這裡多加一個 { text, link }，
-      // link 指到該主題底下隨便一篇頁面即可（通常是生物視角那篇）。
+      // 生物／電路／數學是三個平行的頂層分類（鏡頭），不是主題清單。
+      // 生物、電路底下放不綁定特定神經元模型的通用概念頁；
+      // 每個主題（如 LIF）掛在數學底下自己開資料夾，
+      // 內含站在該主題角度的收斂頁（用虛線引用連回生物/電路的通用頁）+ 該主題的推導頁。
+      // 詳見 dev/Content_Architecture_Plan.md。
     ],
-    // 側邊欄依「網址前綴」分組：瀏覽 /lif-neuron/* 底下的頁面時，
-    // 只會顯示 '/lif-neuron/' 這組清單，不會混進其他主題/分類。
-    // 新增主題時，比照 '/lif-neuron/' 這組的寫法，用該主題的路徑前綴當 key，
-    // 整組複製貼上再改內容即可（三階段順序固定：生物 → 電路 → 數學）。
+    // 側邊欄依「網址前綴」分組：瀏覽 /biological/*、/circuit/*、/math/* 底下的頁面時，
+    // 只會顯示對應那組清單，不會混進其他分類。
+    // 新增主題時（例如 ALIF），在 '/math/' 這組裡比照 'LIF' 的寫法，
+    // 新增一個 { text: '主題名', items: [...] }。
     sidebar: {
-      '/lif-neuron/': [
+      '/biological/': [
         {
-          text: 'LIF Neuron', items: [
-            { text: '生物視角', link: '/lif-neuron/biological' },
-            { text: '電路視角', link: '/lif-neuron/circuit' },
-            { text: '數學模型', link: '/lif-neuron/math' }
+          text: '生物', items: [
+            { text: '神經細胞', link: '/biological/neuron-cell' }
+          ]
+        }
+      ],
+      '/circuit/': [
+        {
+          text: '電路', items: [
+            { text: '等效電路', link: '/circuit/equivalent-circuit' },
+            { text: 'FPGA', link: '/circuit/fpga' }
+          ]
+        }
+      ],
+      '/math/': [
+        {
+          text: 'LIF', items: [
+            { text: '生物的概念', link: '/math/lif/biological-concept' },
+            { text: '等效電路的概念', link: '/math/lif/circuit-concept' },
+            { text: '微分方程', link: '/math/lif/differential-equation' }
           ]
         }
       ],
