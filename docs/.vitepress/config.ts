@@ -23,56 +23,18 @@ export default defineConfig({
   themeConfig: {
     nav: [
       { text: 'Home', link: '/' },
-      { text: '生物', link: '/biological/neuron-cell' },
-      { text: '電路', link: '/circuit/equivalent-circuit' },
-      { text: '數學', link: '/math/lif/biological-concept' },
-      { text: 'Example', link: '/example/formula-demo' },
-      { text: 'Playground', link: '/playground/second-category' }
-      // 生物／電路／數學是三個平行的頂層分類（鏡頭），不是主題清單。
-      // 生物、電路底下放不綁定特定神經元模型的通用概念頁；
-      // 每個主題（如 LIF）掛在數學底下自己開資料夾，
-      // 內含站在該主題角度的收斂頁（用虛線引用連回生物/電路的通用頁）+ 該主題的推導頁。
-      // 詳見 dev/Content_Architecture_Plan.md。
+      { text: 'Academy', link: '/academy/outline' }
     ],
-    // 側邊欄依「網址前綴」分組：瀏覽 /biological/*、/circuit/*、/math/* 底下的頁面時，
-    // 只會顯示對應那組清單，不會混進其他分類。
-    // 新增主題時（例如 ALIF），在 '/math/' 這組裡比照 'LIF' 的寫法，
-    // 新增一個 { text: '主題名', items: [...] }。
     sidebar: {
-      '/biological/': [
+      '/academy/': [
         {
-          text: '生物', items: [
-            { text: '神經細胞', link: '/biological/neuron-cell' }
+          text: 'Academy', items: [
+            { text: '學習大綱', link: '/academy/outline' },
+            { text: '生物的概念', link: '/academy/lif/biological-concept' },
+            { text: '等效電路的概念', link: '/academy/lif/circuit-concept' },
+            { text: '微分方程', link: '/academy/lif/differential-equation' }
           ]
         }
-      ],
-      '/circuit/': [
-        {
-          text: '電路', items: [
-            { text: '等效電路', link: '/circuit/equivalent-circuit' },
-            { text: 'FPGA', link: '/circuit/fpga' }
-          ]
-        }
-      ],
-      '/math/': [
-        {
-          text: 'LIF', items: [
-            { text: '生物的概念', link: '/math/lif/biological-concept' },
-            { text: '等效電路的概念', link: '/math/lif/circuit-concept' },
-            { text: '微分方程', link: '/math/lif/differential-equation' }
-          ]
-        }
-      ],
-      '/example/': [
-        {
-          text: 'Example', items: [
-            { text: 'Formula Demo', link: '/example/formula-demo' },
-            { text: 'Inline Math', link: '/example/inline-math' }
-          ]
-        }
-      ],
-      '/playground/': [
-        { text: 'Playground', items: [{ text: 'Second Category', link: '/playground/second-category' }] }
       ]
     }
   },

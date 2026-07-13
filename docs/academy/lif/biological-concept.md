@@ -2,9 +2,9 @@
 
 這裡會從生物神經元的角度慢慢帶出 LIF 模型的源頭
 
-生物視角概念——完整說明見[生物：神經細胞](../../biological/neuron-cell.md)。
+此為 LIF 的基礎知識概念。
 
-![alt text](../../public/biological/neuron-cell/d3feaa15-83b2-499c-92a5-47fd967bc6e0.jpg)
+![alt text](../../public/lif/d3feaa15-83b2-499c-92a5-47fd967bc6e0.jpg)
 圖源: https://zh-yue.wikipedia.org/wiki/%E7%A5%9E%E7%B6%93%E5%85%83#/media/File:Blausen_0657_MultipolarNeuron.png
 
 
@@ -14,10 +14,10 @@
 2. 各方訊號在樹突與細胞本體(soma)的膜上不斷加總（空間 + 時間加總）累積電位
 3. (興奮/抑制) 在 (時間/空間) 上加總後的電位在 **軸丘** 做過閾值判斷
     <br>突觸會分出興奮突觸以及抑制突觸，去極化的條件就是加總訊號超越閾值
-    ![alt text](../../public/biological/neuron-cell/anatomy-and-physiology-2e-12-05.02-webp.webp)
+    ![alt text](../../public/lif/anatomy-and-physiology-2e-12-05.02-webp.webp)
 4. **軸丘**的電位 $>$ 閾值，會發出脈衝 spike 
     <br>如下動畫
-    ![alt text](../../public/biological/neuron-cell/wiki_action_potential.gif)
+    ![alt text](../../public/lif/wiki_action_potential.gif)
     圖源: https://zh-yue.wikipedia.org/wiki/%E5%8B%95%E4%BD%9C%E9%9B%BB%E4%BD%8D#/media/File:Action_Potential.gif
 
 
@@ -47,7 +47,7 @@
 * 此時`鈉鉀幫浦`也會出動，消耗能量(ATP)幫忙把 $Na^+ \times3$ 膜內得 $K^+ \times 2$，讓內外膜電位以及鈉鉀離子濃度`恢復成(極化)`。
 :::
 
-![alt text](../../public/biological/neuron-cell/anatomy-and-physiology-2e-12-04-07f-webp.png)
+![alt text](../../public/lif/anatomy-and-physiology-2e-12-04-07f-webp.png)
 
 所以重點就在於電位累積以及 **去極化** 的邏輯
 
@@ -55,11 +55,11 @@
 
 進一步觀察訊號傳遞過程，神經傳遞物質就是控制蛋白質通道開啟的鑰匙
 
-![alt text](../../public/biological/neuron-cell/20190712_圖說.png)
+![alt text](../../public/lif/20190712_圖說.png)
 
 進一步拉大就像這樣，離子進出相當於有股電流 $I(t)$，走到這裡就是準備把它抽象化成電路了
 
-![alt text](../../public/biological/neuron-cell/nma-neuron-icon.png)
+![alt text](../../public/lif/nma-neuron-icon.png)
 
 
 下一步：[等效電路的概念](./circuit-concept.md) —— 把這裡的生理機制對應到等效電路元件。

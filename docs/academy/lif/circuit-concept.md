@@ -2,11 +2,11 @@
 
 這裡會從等效電路的角度慢慢帶出 LIF 模型的源頭
 
-等效電路概念—完整說明見[電路：等效電路](../../circuit/equivalent-circuit.md)。
+此為 LIF 的基礎等效電路概念。
 
 ## 概念遷移: 生物 $\to$ 電路
 
-![alt text](../../public/biological/neuron-cell/nma-neuron-icon.png)
+![alt text](../../public/lif/nma-neuron-icon.png)
 
 * $V(t)$: 膜電位
 * $I(t)$: 總輸入電流（外部灌進膜的電流，可能來自突觸或電極注入）
@@ -14,7 +14,7 @@
     * $H$ 代表 **H**yperpolarization-activated，節律電流 (暫時不討論)
     * $AHP \to$ **A**fter**H**yper**P**olarization，過極化後電流 (暫時不討論)
 
-![alt text](../../public/circuit/equivalent-circuit/neuron-circuit.png)
+![alt text](../../public/lif/neuron-circuit.png)
 
 * $C_{m}$: 膜電容 $m \to membrane$
     * 細胞膜的`脂雙層`是絕緣層，兩側是導電的離子溶液 → 天生就是一個電容
@@ -27,11 +27,11 @@
 
 ## 電流恆等公式推導
 
-![alt text](../../public/circuit/equivalent-circuit/neuron-circuit.png)
+![alt text](../../public/lif/neuron-circuit.png)
 
 $$I(t) = C_m \frac{dV_m(t)}{dt} + I_L(t) + I_{Na}(t) + I_K(t) + I_H(t) + I_{AHP}(t)$$
 
-![alt text](../../public/circuit/equivalent-circuit/neuron-circuit-2.png)
+![alt text](../../public/lif/neuron-circuit-2.png)
 
 把電流進一步展開。
 * 每個 $E_X$ 是該離子的「目標電壓」，電路上就是一顆**電池**（reversal potential）

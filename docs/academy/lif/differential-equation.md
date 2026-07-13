@@ -32,7 +32,7 @@
 
 ## 膜電位微分方程
 
-![神經元等效電路：膜電容與各離子通道的電池 + 可變電阻](../../public/circuit/equivalent-circuit/neuron-circuit-2.png)
+![神經元等效電路：膜電容與各離子通道的電池 + 可變電阻](../../public/lif/neuron-circuit-2.png)
 
 回到這條式子，他由很多 $-a(y - b)$ 組成
 
@@ -56,7 +56,7 @@ $$C_m \frac{dV_m(t)}{dt} = - g_L(V_m(t) - E_L) - g_{Na}(t)(V_m(t) - E_{Na}) - g_
 | 閾值 ($V_{th}$) | $\approx -55\ mV$ |
 | spike ($V_{spike}$) 峰值 | $\approx +30\ mV$ | 
 
-![動作電位波形：靜止電位、閾值、去極化到峰值、再極化與過極化](../../public/math/anatomy-and-physiology-2e-12-04-07f-webp-2.png)
+![動作電位波形：靜止電位、閾值、去極化到峰值、再極化與過極化](../../public/lif/anatomy-and-physiology-2e-12-04-07f-webp-2.png)
 
 ---
 
@@ -127,4 +127,3 @@ $$\frac{dV_m(t)}{dt} = -\frac{1}{\tau_m}(V_m(t) - E_L) + \frac{I(t)}{C_m}$$
 $$\frac{dV_m(t)}{dt} = -\frac{1}{\tau_m}(V_m(t) - E_L) + \frac{I(t)}{C_m}$$
 $$V_m(t_k) \ge V_{th} \to \text{spiking}$$
 $$V_m(t) = V_{reset}，\{t_k^+ < t < t_k^+ + \tau_{ref}\}$$
-
