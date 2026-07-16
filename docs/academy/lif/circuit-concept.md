@@ -29,6 +29,12 @@
 
 ![alt text](../../public/lif/neuron-circuit.png)
 
+上圖裡，$C_m$、$I_L$ 跟每一種離子通道，都是**並聯**在同一組節點（膜內 / 膜外）之間的路徑。這是**克希荷夫電流定律 (Kirchhoff's Current Law, KCL)** 在講的規則：流進一個節點的電流，一定等於從這個節點流出去的電流總和。
+
+套到這裡就是：外部灌進來的 $I(t)$，會被這些並聯路徑瓜分掉
+
+一部分拿去對電容充電（$C_m \frac{dV_m}{dt}$），剩下的分別流過漏電流跟各離子通道。所以「總電流」直接等於「各分支電流加總」：
+
 $$I(t) = C_m \frac{dV_m(t)}{dt} + I_L(t) + I_{Na}(t) + I_K(t) + I_H(t) + I_{AHP}(t)$$
 
 ![alt text](../../public/lif/neuron-circuit-2.png)
