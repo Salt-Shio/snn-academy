@@ -4,7 +4,7 @@
 
 此為 LIF 的基礎等效電路概念。
 
-## 概念遷移: 生物 $\to$ 電路
+## 概念遷移: 生物 -> 電路
 
 ![alt text](../../public/lif/nma-neuron-icon.png)
 

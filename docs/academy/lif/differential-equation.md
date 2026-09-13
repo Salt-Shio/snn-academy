@@ -1,3 +1,7 @@
+<script setup>
+import LIFSpikeDemo from '../../components/LIFSpikeDemo.vue'
+</script>
+
 # LIF：微分方程
 
 承接[等效電路的概念](./circuit-concept.md)推出的電流恆等式，這一頁要分析它「隨時間怎麼跑」，並把它砍成乾淨的 Leaky Integrate-and-Fire。
@@ -127,3 +131,7 @@ $$\frac{dV_m(t)}{dt} = -\frac{1}{\tau_m}(V_m(t) - E_L) + \frac{I(t)}{C_m}$$
 $$\frac{dV_m(t)}{dt} = -\frac{1}{\tau_m}(V_m(t) - E_L) + \frac{I(t)}{C_m}$$
 $$V_m(t_k) \ge V_{th} \to \text{spiking}$$
 $$V_m(t) = V_{reset}，\{t_k^+ < t < t_k^+ + \tau_{ref}\}$$
+
+實際跑一次上面這三條式子，$V_m(t)$ 長什麼樣子：
+
+<LIFSpikeDemo />
