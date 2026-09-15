@@ -32,7 +32,8 @@ export default defineConfig({
             { text: '學習大綱', link: '/academy/outline' },
             { text: '生物的概念', link: '/academy/lif/biological-concept' },
             { text: '等效電路的概念', link: '/academy/lif/circuit-concept' },
-            { text: '微分方程', link: '/academy/lif/differential-equation' }
+            { text: '微分方程', link: '/academy/lif/differential-equation' },
+            { text: '神經元串連', link: '/academy/lif/neuron-connection' },
           ]
         }
       ]
