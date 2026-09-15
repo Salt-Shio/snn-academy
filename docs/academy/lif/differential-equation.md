@@ -147,13 +147,37 @@ $$\frac{dV_m(t)}{dt} = -\frac{1}{\tau_m}(V_m(t) - E_L) + \frac{I(t)}{C_m}$$
   <br>$V_m(t) = V_{reset}，\{t_k^+ < t < t_k^+ + \tau_{ref}\}$
 * 過了 $t_k + \tau_{ref}$ 之後解除固定，微分方程從 $V_{reset}$ 重新開始積分，等著下一次過閾值
 
-## 總結與視覺化
+## LIF 公式整合
 
-把 LIF 的公式整理再一起:
 
 $$\frac{dV_m(t)}{dt} = -\frac{1}{\tau_m}(V_m(t) - E_L) + \frac{I(t)}{C_m}$$
 $$V_m(t_k) \ge V_{th} \to \text{spiking}$$
 $$V_m(t) = V_{reset}，\{t_k^+ < t < t_k^+ + \tau_{ref}\}$$
+
+## 用 Euler Method 改寫 LIF 的公式
+
+為了方便程式模擬以及推導運作過程，要先換成`一步一步推進`的`離散`形式
+<br>這裡用 `Euler Method`
+
+核心概念是把微分的定義，用一個有限的步長 $\Delta t$ 去近似:
+
+$$\frac{dV_m(t)}{dt} \approx \frac{V_m(t + \Delta t) - V_m(t)}{\Delta t}$$
+
+代入前面保留下來的 LIF 方程，並整理成`下一步電位 = 這一步電位 + 這一步的變化量`:
+
+$$C_m \frac{dV_m(t)}{dt} = -g_L(V_m(t) - E_L) + I(t)$$
+$$\frac{dV_m(t)}{dt} \approx \frac{V_m(t + \Delta t) - V_m(t)}{\Delta t} = -\frac{g_L}{C_m}(V_m(t) - E_L) + \frac{I(t)}{C_m}$$
+
+---
+
+$$\text{移項整理後:}$$
+$$V_m(t + \Delta t) = V_m(t) + \Delta t \left[ -\frac{1}{\tau_m}(V_m(t) - E_L) + \frac{I(t)}{C_m} \right]$$
+$$V_m[t_k] \ge V_{th} \to \text{spiking}$$
+$$V_m[t_k] = V_{reset}，\{t_k^+ < t < t_k^+ + \tau_{ref}\}$$
+
+
+## 總結與視覺化
+
 
 實際跑一次上面這三條式子，$V_m(t)$ 長什麼樣子：
 
