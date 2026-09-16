@@ -18,7 +18,7 @@ const nodes: { id: string; label: string; x: number; y: number; link: string | n
   { id: 'circuit', label: '等效電路', x: 200, y: 400, link: '/academy/lif/circuit-concept', status: 'content' },
   { id: 'math', label: 'LIF 公式', x: 320, y: 550, link: '/academy/lif/differential-equation', status: 'content' },
   { id: 'analysis', label: 'LIF\n相關性分析', x: 180, y: 720, link: null, status: 'developing' },
-  { id: 'series', label: '神經元串聯', x: 460, y: 720, link: null, status: 'developing' }
+  { id: 'series', label: '神經元連接', x: 460, y: 720, link: '/academy/lif/neuron-connection', status: 'content' }
 ];
 
 // 定義連線

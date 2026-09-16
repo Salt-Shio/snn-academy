@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { LIFNeuron } from '../../src/lib/snn/neurons'
 import { getVoltagePath } from '../../src/lib/snn/visual/utils/chartUtils'
-import renderMathInElement from 'katex/dist/contrib/auto-render'
+import renderMathInElement from 'katex/contrib/auto-render'
 
 const demoRef = ref<HTMLElement | null>(null)
 
