@@ -23,13 +23,12 @@ export default defineConfig({
   themeConfig: {
     nav: [
       { text: 'Home', link: '/' },
-      { text: 'Academy', link: '/academy/outline' }
+      { text: 'Academy', link: '/academy/lif/biological-concept' }
     ],
     sidebar: {
       '/academy/': [
         {
           text: 'Academy', items: [
-            { text: '學習大綱', link: '/academy/outline' },
             { text: '生物的概念', link: '/academy/lif/biological-concept' },
             { text: '等效電路的概念', link: '/academy/lif/circuit-concept' },
             { text: '微分方程', link: '/academy/lif/differential-equation' },
