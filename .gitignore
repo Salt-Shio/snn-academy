@@ -30,3 +30,5 @@ docs/.vitepress/cache
 .env
 basic-resource
 .agents
+CLAUDE.md
+.claude
