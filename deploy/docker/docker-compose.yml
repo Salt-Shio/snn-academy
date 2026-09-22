@@ -14,6 +14,9 @@ services:
     image: cloudflare/cloudflared:latest
     container_name: snn-academy-tunnel
     restart: unless-stopped
+    # 用跟主機使用者相同的 UID/GID 跑，這樣才讀得到權限嚴格（只有 owner 能讀）的憑證檔，
+    # 不需要為了讓 container 讀到而放寬檔案權限。UID/GID 從同目錄的 .env 讀入（見部署文件）。
+    user: "${UID}:${GID}"
     command: tunnel --config /etc/cloudflared/config.yml run
     volumes:
       - ${HOME}/.cloudflared:/etc/cloudflared:ro
