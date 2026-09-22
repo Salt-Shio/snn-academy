@@ -66,7 +66,7 @@ $$V_m[t_k] = V_{reset}，\{t_k^+ < t < t_k^+ + \tau_{ref}\}$$
 以上涵蓋了大部分的情況，原則上是
 * 前面有誰 spike，就讓 $I[t] = \Sigma W$，$W$ 是對應的權重
 * 結算時
-    * 發現 $V_m \ge V_{th}$ 會打出 `spike` 影像下一級
+    * 發現 $V_m \ge V_{th}$ 會打出 `spike` 影響下一級
     * 發現 $V_m \lt V_{th}$ 不會打 `spike` 但是自己會 (衰減/遞增) 到 $0$
 
 ## 總結
