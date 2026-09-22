@@ -1,0 +1,27 @@
+services:
+  docs:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    container_name: snn-academy-docs
+    restart: unless-stopped
+    networks:
+      - internal
+    # 故意不寫 ports，不對外（不對 host）開任何 port。
+    # cloudflared 透過同一個 Docker 網路，用 service 名稱 "docs" 連進來就好。
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: snn-academy-tunnel
+    restart: unless-stopped
+    command: tunnel --config /etc/cloudflared/config.yml run
+    volumes:
+      - ${HOME}/.cloudflared:/etc/cloudflared:ro
+    depends_on:
+      - docs
+    networks:
+      - internal
+
+networks:
+  internal:
+    driver: bridge
