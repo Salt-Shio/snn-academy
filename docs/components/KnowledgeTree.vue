@@ -1,41 +1,24 @@
 <script setup lang="ts">
 import { getSmoothEdgePath } from './utils/treeEdge'
+import { nodes, edges } from '../shared/academy-map'
+import { academyLayout } from '../shared/academy-layout'
 
 const NODE_RADIUS = 50
 // 端點 marker 換成圓點後，中心點對齊路徑終點；留一點負值使端點微幅重疊，避免抗鋸齒留白縫
 const END_MARKER_OVERLAP = -2
+const CANVAS_MARGIN = 100 // SVG/容器右下留白，避免最外圈節點貼邊
 
-// 節點狀態:
-// - content：已有內容頁面，可點擊 (綠色)
-// - marker：純標示用的節點，沒有對應頁面，不可點擊 (琥珀色)
-// - developing：尚未開發，不可點擊 (灰色)
-type NodeStatus = 'content' | 'marker' | 'developing'
+// 節點/連線資料來自單一事實來源 docs/shared/academy-map.ts（同時驅動 sidebar）。
+// 版面座標是手動維護的 docs/shared/academy-layout.ts，格式單純（id -> {x, y}），方便直接改數字調位置。
+const posOf = (id: string) => academyLayout[id] ?? { x: 0, y: 0 }
 
-// 定義節點 (完全對應提供的圖片)
-const nodes: { id: string; label: string; x: number; y: number; link: string | null; status: NodeStatus }[] = [
-  { id: 'origin', label: 'LIF 起源', x: 300, y: 100, link: null, status: 'marker' },
-  { id: 'bio', label: '生物', x: 420, y: 250, link: '/academy/lif/biological-concept', status: 'content' },
-  { id: 'circuit', label: '等效電路', x: 200, y: 400, link: '/academy/lif/circuit-concept', status: 'content' },
-  { id: 'math', label: 'LIF 公式', x: 320, y: 550, link: '/academy/lif/differential-equation', status: 'content' },
-  { id: 'analysis', label: 'LIF\n相關性分析', x: 180, y: 720, link: null, status: 'developing' },
-  { id: 'series', label: '神經元連接', x: 460, y: 720, link: '/academy/lif/neuron-connection', status: 'content' }
-];
-
-// 定義連線
-const edges = [
-  { source: 'origin', target: 'bio' },
-  { source: 'bio', target: 'circuit' },
-  { source: 'circuit', target: 'math' },
-  { source: 'math', target: 'analysis' },
-  { source: 'math', target: 'series' }
-];
+const canvasWidth = Math.max(...nodes.map(n => posOf(n.id).x)) + CANVAS_MARGIN
+const canvasHeight = Math.max(...nodes.map(n => posOf(n.id).y)) + CANVAS_MARGIN
 
 // 計算 SVG 貝茲曲線路徑 (實際計算委派給 utils/treeEdge.ts 的純函式)
 const getPath = (sourceId: string, targetId: string) => {
-  const source = nodes.find(n => n.id === sourceId);
-  const target = nodes.find(n => n.id === targetId);
-  if (!source || !target) return '';
-
+  const source = posOf(sourceId);
+  const target = posOf(targetId);
   return getSmoothEdgePath(source, target, NODE_RADIUS, END_MARKER_OVERLAP);
 };
 
@@ -49,12 +32,12 @@ const isActiveEdge = (sId: string, tId: string) => {
 <template>
   <div class="tree-wrapper">
    <div class="tree-scroll">
-    <div class="tree-container">
+    <div class="tree-container" :style="{ width: canvasWidth + 'px', height: canvasHeight + 'px' }">
       <!-- 網格背景 -->
       <div class="grid-bg"></div>
 
       <!-- 連線層 (SVG) -->
-      <svg class="edges-layer" width="600" height="820" viewBox="0 0 600 820">
+      <svg class="edges-layer" :width="canvasWidth" :height="canvasHeight" :viewBox="`0 0 ${canvasWidth} ${canvasHeight}`">
         <defs>
           <marker id="arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6">
             <circle cx="5" cy="5" r="4" fill="#888888" opacity="0.6"/>
@@ -85,7 +68,7 @@ const isActiveEdge = (sId: string, tId: string) => {
             :href="node.link"
             class="tree-node is-clickable"
             :class="'status-' + node.status"
-            :style="{ left: node.x + 'px', top: node.y + 'px' }"
+            :style="{ left: posOf(node.id).x + 'px', top: posOf(node.id).y + 'px' }"
           >
             <div class="node-circle">
               <span v-for="(line, i) in node.label.split('\n')" :key="i" class="node-text-line">
@@ -98,7 +81,7 @@ const isActiveEdge = (sId: string, tId: string) => {
             v-else
             class="tree-node"
             :class="'status-' + node.status"
-            :style="{ left: node.x + 'px', top: node.y + 'px' }"
+            :style="{ left: posOf(node.id).x + 'px', top: posOf(node.id).y + 'px' }"
           >
             <div class="node-circle">
               <span v-for="(line, i) in node.label.split('\n')" :key="i" class="node-text-line">

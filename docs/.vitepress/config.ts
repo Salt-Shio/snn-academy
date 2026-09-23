@@ -2,10 +2,12 @@ import { defineConfig } from 'vitepress'
 // @ts-ignore — markdown-it-texmath 沒有型別宣告，沿用 MathDrawer.vue 原本的作法
 import texmath from 'markdown-it-texmath'
 import katex from 'katex'
+import { buildSidebar, entryLink } from '../shared/academy-map'
 
 export default defineConfig({
   title: 'SNN Academy',
   description: 'Spiking Neural Network teaching notes',
+  srcExclude: ['README.md'],
   markdown: {
     config: (md) => {
       md.use(texmath, { engine: katex, delimiters: 'dollars' })
@@ -23,20 +25,9 @@ export default defineConfig({
   themeConfig: {
     nav: [
       { text: 'Home', link: '/' },
-      { text: 'Academy', link: '/academy/lif/biological-concept' }
+      { text: 'Academy', link: entryLink() }
     ],
-    sidebar: {
-      '/academy/': [
-        {
-          text: 'Academy', items: [
-            { text: '生物的概念', link: '/academy/lif/biological-concept' },
-            { text: '等效電路的概念', link: '/academy/lif/circuit-concept' },
-            { text: '微分方程', link: '/academy/lif/differential-equation' },
-            { text: '神經元連接', link: '/academy/lif/neuron-connection' },
-          ]
-        }
-      ]
-    }
+    sidebar: buildSidebar()
   },
   head: [['link', { rel: 'icon', href: '/favicon.svg' }]]
 })
