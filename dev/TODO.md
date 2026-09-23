@@ -37,30 +37,27 @@
         - [x] 清理已無消費者的依賴（Tailwind、markdown-it、lucide-vue-next、根目錄 vite 等）。
         - [x] 整理 `dev/README.md` 文件索引與新增文件流程說明。
 
-- [ ] **Phase 8: LIF 垂直切片教學內容（鏡頭優先架構）**
-    - **目標**：只挑 LIF 神經元這一個主題，把「生物直覺 → 電路邏輯 → 數學抽象」的引導教學體驗做完整，驗證這套架構是否成立，其他神經元/突觸主題先不擴展。
-    - **架構已從「主題優先」改為「鏡頭優先」**（規劃討論見 `dev/Content_Architecture_Plan.md`）：生物、電路、數學是三個平行的頂層分類，不是誰包含誰。生物、電路底下放不綁定特定神經元模型的通用概念頁；每個主題（如 LIF）掛在數學底下自己開資料夾，內含站在該主題角度的收斂頁（用連結引用回生物/電路的通用頁）+ 該主題的推導頁。
-    - **資料夾結構**（已依此建立骨架，日後每加一個新主題就在 `math/` 底下複製 `lif/` 這個模式）：
-        ```
-        docs/
-          biological/
-            neuron-cell.md          <- 生物：神經細胞（通用概念頁）
-          circuit/
-            equivalent-circuit.md   <- 電路：等效電路（通用概念頁）
-            fpga.md                  <- 電路：FPGA（通用概念頁，佔位）
-          math/
-            lif/
-              biological-concept.md   <- LIF：生物的概念（引用 neuron-cell.md）
-              circuit-concept.md      <- LIF：等效電路的概念（引用 equivalent-circuit.md）
-              differential-equation.md <- LIF：微分方程（核心推導）
-        ```
-        `nav`/`sidebar` 已改成 `/biological/`、`/circuit/`、`/math/` 三個平行分組，`/math/` 分組內以主題（目前只有 LIF）呈現子項目。
-    - **技術環境**：確認不需要新裝套件。數學沿用已驗證的 KaTeX；電路圖用手刻 SVG 直接寫在 `.md`（VitePress 原生支援 raw SVG/HTML，Mermaid 不適合畫電路符號，故不引入）；生物視角先做簡化靜態示意圖，之後要做互動動畫時 VitePress 原生支援 Vue-in-Markdown，屆時也不需要額外依賴。
-    - **任務**：
-        - [ ] **生物：神經細胞**（`biological/neuron-cell.md`）：神經元對應的生理機制說明（膜電位、離子流動），簡化版突觸傳遞示意（先用靜態 SVG，不用一次做到最終品質的動畫）。內容需通用化，不綁死 LIF 用語。
-        - [ ] **電路：等效電路**（`circuit/equivalent-circuit.md`）：等效 RC 電路對應（細胞膜 $\to$ 電容 $C_m$、離子通道 $\to$ 電阻 $g_L$、濃度梯度 $\to$ 電池 $V_L$），一張手刻 SVG 電路圖 + 對應說明文字。內容需通用化，不綁死 LIF 用語。
-        - [ ] **LIF：生物的概念 / 等效電路的概念**（`math/lif/biological-concept.md`、`circuit-concept.md`）：站在 LIF 角度做簡短收斂，不重複通用頁的完整說明，只挑 LIF 用得到的部分。
-        - [ ] **LIF：微分方程**（`math/lif/differential-equation.md`）：改寫自 `dev/math/CUBA_LIF.md`，含膜電位微分方程、尤拉積分、發射與重置邏輯，語氣需改為教學向，不可直接照搬開發者筆記。
-        - [ ] 敘事銜接：確認 LIF 底下三篇讀起來順暢（生物的概念 → 等效電路的概念 → 微分方程），且各自連回通用頁的引用連結不是憑空冒出。
-        - [ ] 內容都上線後，清掉 `docs/example/`、`docs/playground/` 這兩個架構驗證用的假頁面，連同 `nav`/`sidebar` 設定一併移除。
-        - [ ] 驗證完成後才決定：是否橫向擴展到其他主題（COBA、ALIF、STP...）並比照 LIF 模式在 `math/` 底下開新資料夾，以及是否要做 Phase 6 原本規劃的視覺換皮。
+- [x] **Phase 8: LIF 垂直切片教學內容 [已完成，架構定案為 topic-first]**
+    - **決策更新（2026-09-23）**：本 phase 原規劃的「鏡頭優先」架構——生物 (`biological/`)、
+      電路 (`circuit/`)、數學 (`math/{topic}/`) 三個平行頂層分類——**已否決，且從未真正落地**
+      （下方任務清單是規劃階段遺留文字，跟實際檔案結構不符；原引用的 `dev/Content_Architecture_Plan.md`
+      規劃文件也不存在，已移除死連結）。
+    - 改採專案實際在跑的**主題優先 (topic-first) 扁平結構**：`docs/academy/{topic}/`，每個主題
+      資料夾內直接放該主題從生物直覺到數學推導的所有頁面，不拆分跨主題共用的通用概念層。
+    - **現況**：`docs/academy/lif/` 底下 4 篇內容皆已完成並上線：
+        - [x] `biological-concept.md`（生物的概念）
+        - [x] `circuit-concept.md`（等效電路的概念）
+        - [x] `differential-equation.md`（微分方程）
+        - [x] `neuron-connection.md`（神經元連接）
+    - [x] sidebar／首頁知識樹已重構為共讀 `docs/shared/academy-map.ts`（內容/結構：node、edge、sidebar）
+      + `docs/shared/academy-layout.ts`（純座標 `id -> {x, y}`，手動排版，格式單純方便調整）
+      （`docs/.vitepress/config.ts` + `docs/components/KnowledgeTree.vue` 皆已改讀這兩份資料），
+      新增頁面只需改 `academy-map.ts` + `academy-layout.ts` 兩個檔案，不用再動 config/元件本身。
+    - **資料夾命名慣例**已定案，見 `docs/README.md`。
+    - **後續擴充方向已定案**：橫向擴展其他主題（突觸動態、網路組裝、訊號源、量化指標等）時，
+      比照 `lif/` 的 topic-first 模式在 `docs/academy/` 底下各自開新資料夾，**不是**回頭比照舊規劃
+      在 `math/` 底下開子資料夾。Phase 6 原規劃的視覺換皮仍待評估，跟本次文件架構決策無關。
+
+- [ ] **Phase 9: 文件框架整理**
+    - [ ] 清掉 `docs/example/`、`docs/playground/` 架構驗證用假頁面，連同殘留設定一併移除。
+    - [x] 新增 `docs/README.md`，補上 `dev/README.md` 一直引用但從未存在的「教學內容寫作流程」說明。
