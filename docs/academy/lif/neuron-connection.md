@@ -1,6 +1,6 @@
 # 神經元連接
 
-接續上一節的 LIF，是描述單一顆神經元的邏輯
+這裡示範的組合是 [基礎 LIF](/academy/neuron/lif-base)(無適應電流) + [CUBA 突觸](/academy/synapse/cuba)(電流基礎)，接續上一節的 LIF，是描述單一顆神經元的邏輯
 
 $$V_m(t + \Delta t) = V_m(t) + \Delta t \left[ -\frac{1}{\tau_m}(V_m(t) - E_L) + \frac{\color{red}I(t)}{C_m} \right]$$
 $$V_m[t_k] \ge V_{th} \to \text{spiking}$$

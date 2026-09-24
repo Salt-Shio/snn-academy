@@ -32,7 +32,9 @@ export interface AcademyEdge {
 export const entryTopicId = 'lif'
 
 export const topics: TopicMeta[] = [
-  { id: 'lif', sidebarText: 'LIF 神經元', path: '/academy/lif/' }
+  { id: 'lif', sidebarText: 'LIF 神經元', path: '/academy/lif/' },
+  { id: 'neuron', sidebarText: '神經元種類', path: '/academy/neuron/' },
+  { id: 'synapse', sidebarText: '突觸方式', path: '/academy/synapse/' }
 ]
 
 export const nodes: AcademyNode[] = [
@@ -46,7 +48,17 @@ export const nodes: AcademyNode[] = [
   { id: 'math', label: 'LIF 公式', status: 'content',
     link: '/academy/lif/differential-equation',
     sidebar: { topic: 'lif', text: '微分方程', order: 3 } },
-  { id: 'analysis', label: 'LIF\n相關性分析', status: 'developing', link: null },
+  { id: 'neuron-types', label: '神經元\n種類', status: 'marker', link: null },
+  { id: 'synapse-types', label: '突觸\n方式', status: 'marker', link: null },
+  { id: 'neuron-lif-base', label: '基礎 LIF', status: 'content',
+    link: '/academy/neuron/lif-base',
+    sidebar: { topic: 'neuron', text: '基礎 LIF', order: 1 } },
+  { id: 'neuron-alif', label: 'ALIF\n適應性', status: 'developing', link: null },
+  { id: 'neuron-other', label: '其他\n神經元變體', status: 'developing', link: null },
+  { id: 'synapse-cuba', label: 'CUBA\n電流基礎', status: 'content',
+    link: '/academy/synapse/cuba',
+    sidebar: { topic: 'synapse', text: 'CUBA 突觸(電流基礎)', order: 1 } },
+  { id: 'synapse-coba', label: 'COBA\n電導基礎', status: 'developing', link: null },
   { id: 'series', label: '神經元連接', status: 'content',
     link: '/academy/lif/neuron-connection',
     sidebar: { topic: 'lif', text: '神經元連接', order: 4 } }
@@ -56,8 +68,15 @@ export const edges: AcademyEdge[] = [
   { source: 'origin', target: 'bio' },
   { source: 'bio', target: 'circuit' },
   { source: 'circuit', target: 'math' },
-  { source: 'math', target: 'analysis' },
-  { source: 'math', target: 'series' }
+  { source: 'math', target: 'neuron-types' },
+  { source: 'math', target: 'synapse-types' },
+  { source: 'neuron-types', target: 'neuron-lif-base' },
+  { source: 'neuron-types', target: 'neuron-alif' },
+  { source: 'neuron-types', target: 'neuron-other' },
+  { source: 'synapse-types', target: 'synapse-cuba' },
+  { source: 'synapse-types', target: 'synapse-coba' },
+  { source: 'neuron-lif-base', target: 'series' },
+  { source: 'synapse-cuba', target: 'series' }
 ]
 
 /** 給 config.ts：把 nodes/topics 衍生成 VitePress 的 sidebar 設定 */

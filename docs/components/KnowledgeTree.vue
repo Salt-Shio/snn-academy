@@ -6,14 +6,25 @@ import { academyLayout } from '../shared/academy-layout'
 const NODE_RADIUS = 50
 // 端點 marker 換成圓點後，中心點對齊路徑終點；留一點負值使端點微幅重疊，避免抗鋸齒留白縫
 const END_MARKER_OVERLAP = -2
-const CANVAS_MARGIN = 100 // SVG/容器右下留白，避免最外圈節點貼邊
+const CANVAS_MARGIN = 100 // SVG/容器四周留白，避免最外圈節點貼邊或被 overflow 裁掉
 
 // 節點/連線資料來自單一事實來源 docs/shared/academy-map.ts（同時驅動 sidebar）。
 // 版面座標是手動維護的 docs/shared/academy-layout.ts，格式單純（id -> {x, y}），方便直接改數字調位置。
-const posOf = (id: string) => academyLayout[id] ?? { x: 0, y: 0 }
+const rawPosOf = (id: string) => academyLayout[id] ?? { x: 0, y: 0 }
 
-const canvasWidth = Math.max(...nodes.map(n => posOf(n.id).x)) + CANVAS_MARGIN
-const canvasHeight = Math.max(...nodes.map(n => posOf(n.id).y)) + CANVAS_MARGIN
+// 座標可以自由取正負值，這裡統一平移到留白區間內，避免只撐開右下界時左上角的節點被容器邊界裁掉
+const rawXs = nodes.map(n => rawPosOf(n.id).x)
+const rawYs = nodes.map(n => rawPosOf(n.id).y)
+const offsetX = CANVAS_MARGIN - Math.min(...rawXs)
+const offsetY = CANVAS_MARGIN - Math.min(...rawYs)
+
+const posOf = (id: string) => {
+  const raw = rawPosOf(id)
+  return { x: raw.x + offsetX, y: raw.y + offsetY }
+}
+
+const canvasWidth = Math.max(...rawXs) + offsetX + CANVAS_MARGIN
+const canvasHeight = Math.max(...rawYs) + offsetY + CANVAS_MARGIN
 
 // 計算 SVG 貝茲曲線路徑 (實際計算委派給 utils/treeEdge.ts 的純函式)
 const getPath = (sourceId: string, targetId: string) => {
